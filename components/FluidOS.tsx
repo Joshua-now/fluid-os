@@ -73,9 +73,8 @@ const DEFAULT_SECTIONS: Section[] = [
     items: [
       { name: "Slack",               url: "https://app.slack.com" },
       { name: "Telegram",            url: "https://web.telegram.org" },
-      { name: "#all-bobs-house",     url: "https://app.slack.com/client/T0ALH7F9G/C0AK3FTS3QF" },
-      { name: "#ai-command-center",  url: "https://app.slack.com/client/T0ALH7F9G/C0ALD81NG1E" },
-      { name: "Alerts Channel",      url: "https://app.slack.com/client/T0ALH7F9G/C0ALLFZLVN1" },
+      { name: "#all-bobs-house (Main)", url: "https://app.slack.com/client/T0ALH7F9G/C0AK3FTS3QF" },
+      { name: "#ai-command-center (Alerts)", url: "https://app.slack.com/client/T0ALH7F9G/C0ALD81NG1E" },
     ],
   },
   {
