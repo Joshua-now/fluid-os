@@ -87,11 +87,8 @@ const DEFAULT_SECTIONS: Section[] = [
   },
 ];
 
-// Services to health-check
-const HEALTH_CHECKS: { label: string; url: string }[] = [
-  { label: "n8n",         url: "https://n8n-production-5955.up.railway.app/healthz" },
-  { label: "Switchboard", url: "https://switchboard-v5-production.up.railway.app/health" },
-];
+// Labels for the health check display (actual checks run server-side via /api/health)
+const HEALTH_LABELS = ["n8n", "Switchboard"];
 
 const STORAGE = {
   sections:  "fluid-os-sections",
@@ -225,22 +222,22 @@ export default function FluidOS() {
     localStorage.setItem(STORAGE.favorites, JSON.stringify(favorites));
   }, [favorites]);
 
-  // ── Live health checks ──
+  // ── Live health checks (proxied server-side to avoid CORS) ──
   const checkHealth = useCallback(async () => {
-    const next: LiveStatus = {};
-    for (const svc of HEALTH_CHECKS) {
-      next[svc.label] = "checking";
-    }
-    setLiveStatus({ ...next });
+    const checking: LiveStatus = {};
+    for (const label of HEALTH_LABELS) checking[label] = "checking";
+    setLiveStatus({ ...checking });
 
-    for (const svc of HEALTH_CHECKS) {
-      try {
-        const res = await fetch(svc.url, { signal: AbortSignal.timeout(5000) });
-        next[svc.label] = res.ok ? "online" : "offline";
-      } catch (_) {
-        next[svc.label] = "offline";
-      }
-      setLiveStatus({ ...next });
+    try {
+      const res = await fetch("/api/health", { cache: "no-store" });
+      const data: { label: string; status: "online" | "offline" }[] = await res.json();
+      const next: LiveStatus = {};
+      for (const item of data) next[item.label] = item.status;
+      setLiveStatus(next);
+    } catch {
+      const failed: LiveStatus = {};
+      for (const label of HEALTH_LABELS) failed[label] = "offline";
+      setLiveStatus(failed);
     }
     setLastChecked(
       new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
@@ -300,10 +297,10 @@ export default function FluidOS() {
 
         {/* Live status indicators */}
         <div className="flex items-center gap-4">
-          {HEALTH_CHECKS.map((svc) => (
-            <div key={svc.label} className="flex items-center gap-1.5 text-xs text-zinc-400">
-              <Dot status={liveStatus[svc.label] ?? "unknown"} />
-              <span className="hidden sm:inline">{svc.label}</span>
+          {HEALTH_LABELS.map((label) => (
+            <div key={label} className="flex items-center gap-1.5 text-xs text-zinc-400">
+              <Dot status={liveStatus[label] ?? "unknown"} />
+              <span className="hidden sm:inline">{label}</span>
             </div>
           ))}
           <button
@@ -350,16 +347,16 @@ export default function FluidOS() {
 
         {/* ── LIVE STATUS BANNER ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {HEALTH_CHECKS.map((svc) => {
-            const s = liveStatus[svc.label] ?? "unknown";
+          {HEALTH_LABELS.map((label) => {
+            const s = liveStatus[label] ?? "unknown";
             return (
               <div
-                key={svc.label}
+                key={label}
                 className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 flex items-center gap-3"
               >
                 <Dot status={s} />
                 <div>
-                  <div className="text-xs text-zinc-500">{svc.label}</div>
+                  <div className="text-xs text-zinc-500">{label}</div>
                   <div className={`text-sm font-medium capitalize ${
                     s === "online"   ? "text-green-400" :
                     s === "offline"  ? "text-red-400"   :
