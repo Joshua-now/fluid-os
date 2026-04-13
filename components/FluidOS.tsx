@@ -28,7 +28,7 @@ const DEFAULT_SECTIONS: Section[] = [
     items: [
       { name: "Instantly",         url: "https://app.instantly.ai" },
       { name: "Campaigns",         url: "https://app.instantly.ai/campaigns" },
-      { name: "Email Accounts",    url: "https://app.instantly.ai/settings/email-accounts" },
+      { name: "Email Accounts",    url: "https://app.instantly.ai/app/accounts" },
       { name: "Analytics",         url: "https://app.instantly.ai/analytics" },
     ],
   },
