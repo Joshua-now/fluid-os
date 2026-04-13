@@ -72,6 +72,7 @@ const DEFAULT_SECTIONS: Section[] = [
     description: "Slack alerts, logs, reporting",
     items: [
       { name: "Slack",               url: "https://app.slack.com" },
+      { name: "Telegram",            url: "https://web.telegram.org" },
       { name: "Hand-Raises Channel", url: "https://app.slack.com/client/T0ALH7F9G/C0ALD81NG1E" },
       { name: "Alerts Channel",      url: "https://app.slack.com/client/T0ALH7F9G/C0ALLFZLVN1" },
     ],
