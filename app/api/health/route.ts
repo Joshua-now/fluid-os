@@ -13,7 +13,8 @@ export async function GET() {
           signal: AbortSignal.timeout(5000),
           cache: "no-store",
         });
-        return { label: svc.label, status: res.ok ? "online" : "offline" };
+        // Any response means the service is up (login redirects return 302/401)
+        return { label: svc.label, status: res.status < 500 ? "online" : "offline" };
       } catch {
         return { label: svc.label, status: "offline" };
       }

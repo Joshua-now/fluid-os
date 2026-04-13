@@ -16,9 +16,9 @@ const DEFAULT_SECTIONS: Section[] = [
     description: "Leads, conversations, pipeline",
     items: [
       { name: "GoHighLevel",       url: "https://app.gohighlevel.com" },
-      { name: "Conversations",     url: "https://app.gohighlevel.com/conversations" },
-      { name: "Pipeline",          url: "https://app.gohighlevel.com/pipeline" },
-      { name: "Contacts",          url: "https://app.gohighlevel.com/contacts" },
+      { name: "Conversations",     url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/conversations/conversations/TC4tfZ3i0Av9Xkbwj9Ip" },
+      { name: "Pipeline",          url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/opportunities/pipeline" },
+      { name: "Contacts",          url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/contacts/smart_list/All" },
     ],
   },
   {
@@ -27,9 +27,9 @@ const DEFAULT_SECTIONS: Section[] = [
     description: "Instantly campaigns & accounts",
     items: [
       { name: "Instantly",         url: "https://app.instantly.ai" },
-      { name: "Campaigns",         url: "https://app.instantly.ai/campaigns" },
+      { name: "Campaigns",         url: "https://app.instantly.ai/app/campaigns" },
       { name: "Email Accounts",    url: "https://app.instantly.ai/app/accounts" },
-      { name: "Analytics",         url: "https://app.instantly.ai/analytics" },
+      { name: "Analytics",         url: "https://app.instantly.ai/app/analytics/overview" },
     ],
   },
   {
@@ -52,8 +52,8 @@ const DEFAULT_SECTIONS: Section[] = [
     items: [
       { name: "Telnyx Portal",        url: "https://portal.telnyx.com" },
       { name: "Switchboard V5",       url: "https://switchboard-v5-production.up.railway.app" },
-      { name: "Anna (Speed to Lead)", url: "https://portal.telnyx.com/#/app/ai-assistants" },
-      { name: "Maya (After Hours)",   url: "https://portal.telnyx.com/#/app/ai-assistants" },
+      { name: "Anna (Speed to Lead)", url: "https://portal.telnyx.com/#/ai/assistants/edit/assistant-76aa79cf-b607-4642-89d9-ce8142d7d21d" },
+      { name: "Maya (After Hours)",   url: "https://portal.telnyx.com/#/ai/assistants/edit/assistant-5b358ddc-9166-4f69-b6ea-ac75a0df4fee" },
     ],
   },
   {
