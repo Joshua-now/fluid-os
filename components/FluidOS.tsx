@@ -7,6 +7,7 @@ type LinkItem  = { name: string; url: string };
 type Section   = { title: string; icon: string; description: string; items: LinkItem[] };
 type ServiceStatus = "checking" | "online" | "offline" | "unknown";
 type LiveStatus = Record<string, ServiceStatus>;
+type LiveDetail = Record<string, string>;
 
 // ─── Your real stack ──────────────────────────────────────────────────────────
 const DEFAULT_SECTIONS: Section[] = [
@@ -89,7 +90,7 @@ const DEFAULT_SECTIONS: Section[] = [
 ];
 
 // Labels for the health check display (actual checks run server-side via /api/health)
-const HEALTH_LABELS = ["n8n", "Switchboard"];
+const HEALTH_LABELS = ["n8n", "Switchboard", "Reply Poller", "Campaign Launcher", "Lead Machine"];
 
 const STORAGE = {
   sections:  "fluid-os-sections",
@@ -202,6 +203,7 @@ export default function FluidOS() {
   const [search,      setSearch]      = useState("");
   const [editing,     setEditing]     = useState<Section | null>(null);
   const [liveStatus,  setLiveStatus]  = useState<LiveStatus>({});
+  const [liveDetail,  setLiveDetail]  = useState<LiveDetail>({});
   const [lastChecked, setLastChecked] = useState<string>("");
 
   // ── Load from localStorage ──
@@ -231,10 +233,15 @@ export default function FluidOS() {
 
     try {
       const res = await fetch("/api/health", { cache: "no-store" });
-      const data: { label: string; status: "online" | "offline" }[] = await res.json();
+      const data: { label: string; status: "online" | "offline"; detail?: string }[] = await res.json();
       const next: LiveStatus = {};
-      for (const item of data) next[item.label] = item.status;
+      const det: LiveDetail  = {};
+      for (const item of data) {
+        next[item.label] = item.status;
+        if (item.detail) det[item.label] = item.detail;
+      }
       setLiveStatus(next);
+      setLiveDetail(det);
     } catch {
       const failed: LiveStatus = {};
       for (const label of HEALTH_LABELS) failed[label] = "offline";
@@ -296,9 +303,9 @@ export default function FluidOS() {
           </span>
         </div>
 
-        {/* Live status indicators */}
+        {/* Live status indicators — top bar shows services only */}
         <div className="flex items-center gap-4">
-          {HEALTH_LABELS.map((label) => (
+          {["n8n", "Switchboard"].map((label) => (
             <div key={label} className="flex items-center gap-1.5 text-xs text-zinc-400">
               <Dot status={liveStatus[label] ?? "unknown"} />
               <span className="hidden sm:inline">{label}</span>
@@ -347,44 +354,29 @@ export default function FluidOS() {
         )}
 
         {/* ── LIVE STATUS BANNER ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {HEALTH_LABELS.map((label) => {
-            const s = liveStatus[label] ?? "unknown";
+            const s   = liveStatus[label] ?? "unknown";
+            const det = liveDetail[label];
             return (
               <div
                 key={label}
                 className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 flex items-center gap-3"
               >
                 <Dot status={s} />
-                <div>
-                  <div className="text-xs text-zinc-500">{label}</div>
+                <div className="min-w-0">
+                  <div className="text-xs text-zinc-500 truncate">{label}</div>
                   <div className={`text-sm font-medium capitalize ${
-                    s === "online"   ? "text-green-400" :
-                    s === "offline"  ? "text-red-400"   :
+                    s === "online"   ? "text-green-400"  :
+                    s === "offline"  ? "text-red-400"    :
                     s === "checking" ? "text-yellow-400" : "text-zinc-400"
                   }`}>
-                    {s}
+                    {det ?? s}
                   </div>
                 </div>
               </div>
             );
           })}
-
-          {/* Static status cards */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 flex items-center gap-3">
-            <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-            <div>
-              <div className="text-xs text-zinc-500">Reply Poller</div>
-              <div className="text-sm font-medium text-green-400">Every 15 min</div>
-            </div>
-          </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 flex items-center gap-3">
-            <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-            <div>
-              <div className="text-xs text-zinc-500">Lead Machine</div>
-              <div className="text-sm font-medium text-green-400">7AM Daily</div>
-            </div>
-          </div>
         </div>
 
         {/* ── SECTIONS GRID ── */}
