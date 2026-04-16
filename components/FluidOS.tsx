@@ -305,6 +305,13 @@ export default function FluidOS() {
 
         {/* Live status indicators — top bar shows services only */}
         <div className="flex items-center gap-4">
+          <a
+            href="/vault"
+            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-zinc-800"
+          >
+            <span>🔐</span>
+            <span className="hidden sm:inline">Vault</span>
+          </a>
           {["n8n", "Switchboard"].map((label) => (
             <div key={label} className="flex items-center gap-1.5 text-xs text-zinc-400">
               <Dot status={liveStatus[label] ?? "unknown"} />
