@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const VAULT_PASSWORD = process.env.VAULT_PASSWORD ?? "fluid2024";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const VAULT_PASSWORD = process.env.VAULT_PASSWORD ?? "fluid2024";
   const { password } = await req.json();
 
   if (password !== VAULT_PASSWORD) {
@@ -14,13 +15,13 @@ export async function POST(req: NextRequest) {
     httpOnly: true,
     sameSite: "lax",
     maxAge: 60 * 60 * 8, // 8 hours
-    path: "/vault",
+    path: "/",
   });
   return res;
 }
 
 export async function DELETE() {
   const res = NextResponse.json({ ok: true });
-  res.cookies.delete("vault_auth");
+  res.cookies.set("vault_auth", "", { maxAge: 0, path: "/" });
   return res;
 }
