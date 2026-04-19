@@ -58,7 +58,7 @@ export async function POST(): Promise<NextResponse> {
   const runAt = new Date().toISOString();
 
   try {
-    const campaignsRaw = await instantly<{ items?: unknown[]; data?: unknown[] }>("/campaigns?limit=50&status=all");
+    const campaignsRaw = await instantly<{ items?: unknown[]; data?: unknown[] }>("/campaigns?limit=50");
     const campaignList = (campaignsRaw.items ?? campaignsRaw.data ?? []) as Record<string, unknown>[];
 
     const analyticsResults = await Promise.allSettled(

@@ -57,7 +57,7 @@ export interface InstantlySnapshot {
 export async function GET(): Promise<NextResponse> {
   try {
     const [campaignsRaw, accountsRaw] = await Promise.all([
-      instantly<{ items?: unknown[]; data?: unknown[] }>("/campaigns?limit=50&status=all"),
+      instantly<{ items?: unknown[]; data?: unknown[] }>("/campaigns?limit=50"),
       instantly<{ items?: unknown[]; data?: unknown[] }>("/accounts?limit=100"),
     ]);
 
