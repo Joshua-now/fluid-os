@@ -2,12 +2,51 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type LinkItem  = { name: string; url: string };
-type Section   = { title: string; icon: string; description: string; items: LinkItem[] };
+// ─── Types ───────────────────────────────────────────────────────────────────
+type LinkItem = { name: string; url: string };
+type Section  = { title: string; icon: string; description: string; items: LinkItem[] };
 type ServiceStatus = "checking" | "online" | "offline" | "unknown";
 type LiveStatus = Record<string, ServiceStatus>;
 type LiveDetail = Record<string, string>;
+
+// ─── Campaign Health Types ────────────────────────────────────────────────────
+type CampaignHealth = {
+  id: string;
+  name: string;
+  status: number;
+  statusLabel: string;
+  sent: number;
+  bounced: number;
+  replied: number;
+  bounceRate: number;
+  replyRate: number;
+  isCritical: boolean;
+};
+
+type AccountHealth = {
+  email: string;
+  status: string;
+  warmupScore: number | null;
+  dailyLimit: number | null;
+  sentToday: number;
+};
+
+type HealthReport = {
+  timestamp: string;
+  campaigns: CampaignHealth[];
+  accounts: AccountHealth[];
+  summary: {
+    totalCampaigns: number;
+    activeCampaigns: number;
+    pausedCampaigns: number;
+    bouncePaused: number;
+    criticalCount: number;
+    avgBounceRate: number;
+    totalSent: number;
+    totalReplied: number;
+  };
+  hasAlerts: boolean;
+};
 
 // ─── Your real stack ──────────────────────────────────────────────────────────
 const DEFAULT_SECTIONS: Section[] = [
@@ -16,10 +55,10 @@ const DEFAULT_SECTIONS: Section[] = [
     icon: "📈",
     description: "Leads, conversations, pipeline",
     items: [
-      { name: "GoHighLevel",       url: "https://app.gohighlevel.com" },
-      { name: "Conversations",     url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/conversations/conversations/TC4tfZ3i0Av9Xkbwj9Ip" },
-      { name: "Pipeline",          url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/opportunities/pipeline" },
-      { name: "Contacts",          url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/contacts/smart_list/All" },
+      { name: "GoHighLevel",  url: "https://app.gohighlevel.com" },
+      { name: "Conversations", url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/conversations/conversations/TC4tfZ3i0Av9Xkbwj9Ip" },
+      { name: "Pipeline",     url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/opportunities/pipeline" },
+      { name: "Contacts",     url: "https://app.gohighlevel.com/v2/location/zkyEC4YPpQXczjPrdoPb/contacts/smart_list/All" },
     ],
   },
   {
@@ -27,10 +66,10 @@ const DEFAULT_SECTIONS: Section[] = [
     icon: "📧",
     description: "Instantly campaigns & accounts",
     items: [
-      { name: "Instantly",         url: "https://app.instantly.ai" },
-      { name: "Campaigns",         url: "https://app.instantly.ai/app/campaigns" },
-      { name: "Email Accounts",    url: "https://app.instantly.ai/app/accounts" },
-      { name: "Analytics",         url: "https://app.instantly.ai/app/analytics/overview" },
+      { name: "Instantly",      url: "https://app.instantly.ai" },
+      { name: "Campaigns",      url: "https://app.instantly.ai/app/campaigns" },
+      { name: "Email Accounts", url: "https://app.instantly.ai/app/accounts" },
+      { name: "Analytics",      url: "https://app.instantly.ai/app/analytics/overview" },
     ],
   },
   {
@@ -51,10 +90,10 @@ const DEFAULT_SECTIONS: Section[] = [
     icon: "📞",
     description: "Telnyx, Switchboard, bots",
     items: [
-      { name: "Telnyx Portal",        url: "https://portal.telnyx.com" },
-      { name: "Switchboard V5",       url: "https://switchboard-v5-production.up.railway.app" },
-      { name: "Anna (Speed to Lead)", url: "https://portal.telnyx.com/#/ai/assistants/edit/assistant-76aa79cf-b607-4642-89d9-ce8142d7d21d" },
-      { name: "Maya (After Hours)",   url: "https://portal.telnyx.com/#/ai/assistants/edit/assistant-5b358ddc-9166-4f69-b6ea-ac75a0df4fee" },
+      { name: "Telnyx Portal",         url: "https://portal.telnyx.com" },
+      { name: "Switchboard V5",        url: "https://switchboard-v5-production.up.railway.app" },
+      { name: "Anna (Speed to Lead)",  url: "https://portal.telnyx.com/#/ai/assistants/edit/assistant-76aa79cf-b607-4642-89d9-ce8142d7d21d" },
+      { name: "Maya (After Hours)",    url: "https://portal.telnyx.com/#/ai/assistants/edit/assistant-5b358ddc-9166-4f69-b6ea-ac75a0df4fee" },
     ],
   },
   {
@@ -62,9 +101,9 @@ const DEFAULT_SECTIONS: Section[] = [
     icon: "🚂",
     description: "Hosting, deployments, code",
     items: [
-      { name: "Railway",           url: "https://railway.app/dashboard" },
-      { name: "GitHub",            url: "https://github.com/Joshua-now" },
-      { name: "SwitchBoard Repo",  url: "https://github.com/Joshua-now/SwitchBoard-V5" },
+      { name: "Railway",          url: "https://railway.app/dashboard" },
+      { name: "GitHub",           url: "https://github.com/Joshua-now" },
+      { name: "SwitchBoard Repo", url: "https://github.com/Joshua-now/SwitchBoard-V5" },
     ],
   },
   {
@@ -72,10 +111,10 @@ const DEFAULT_SECTIONS: Section[] = [
     icon: "💬",
     description: "Slack alerts, logs, reporting",
     items: [
-      { name: "Slack",               url: "https://app.slack.com" },
-      { name: "Telegram",            url: "https://web.telegram.org" },
-      { name: "#all-bobs-house (Main)", url: "https://app.slack.com/client/T0ALH7F9G/C0AK3FTS3QF" },
-      { name: "#ai-command-center (Alerts)", url: "https://app.slack.com/client/T0ALH7F9G/C0ALD81NG1E" },
+      { name: "Slack",                      url: "https://app.slack.com" },
+      { name: "Telegram",                   url: "https://web.telegram.org" },
+      { name: "#all-bobs-house (Main)",     url: "https://app.slack.com/client/T0ALH7F9G/C0AK3FTS3QF" },
+      { name: "#ai-command-center (Alerts)",url: "https://app.slack.com/client/T0ALH7F9G/C0ALD81NG1E" },
     ],
   },
   {
@@ -91,6 +130,9 @@ const DEFAULT_SECTIONS: Section[] = [
 
 // Labels for the health check display (actual checks run server-side via /api/health)
 const HEALTH_LABELS = ["n8n", "Switchboard", "Reply Poller", "Campaign Launcher", "Lead Machine"];
+
+// Instantly campaign health webhook
+const INSTANTLY_HEALTH_URL = "https://n8n-production-5955.up.railway.app/webhook/instantly-health";
 
 const STORAGE = {
   sections:  "fluid-os-sections",
@@ -108,6 +150,222 @@ function Dot({ status }: { status: ServiceStatus }) {
     unknown:  "bg-zinc-500",
   };
   return <span className={`inline-block w-2 h-2 rounded-full ${colors[status]}`} />;
+}
+
+// ─── Bounce rate gauge ────────────────────────────────────────────────────────
+function BounceGauge({ rate }: { rate: number }) {
+  const color = rate > 5 ? "bg-red-500" : rate > 3 ? "bg-yellow-500" : "bg-green-500";
+  const width  = Math.min(rate * 10, 100);
+  return (
+    <div className="w-full bg-zinc-700 rounded-full h-1.5 mt-1">
+      <div
+        className={`h-1.5 rounded-full transition-all ${color}`}
+        style={{ width: `${width}%` }}
+      />
+    </div>
+  );
+}
+
+// ─── Campaign Health Monitor ──────────────────────────────────────────────────
+function CampaignHealthMonitor() {
+  const [report,    setReport]    = useState<HealthReport | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [lastFetch, setLastFetch] = useState<string>("");
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(INSTANTLY_HEALTH_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: HealthReport = await res.json();
+      setReport(data);
+      setError(null);
+      setLastFetch(
+        new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to fetch");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHealth();
+    const t = setInterval(fetchHealth, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [fetchHealth]);
+
+  if (loading && !report) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-lg">📊</span>
+          <h2 className="font-semibold text-sm">Campaign Health</h2>
+          <span className="text-xs text-yellow-400 animate-pulse ml-auto">Loading...</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-zinc-800 rounded-lg h-16 animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !report) {
+    return (
+      <div className="bg-zinc-900 border border-red-900/50 rounded-xl p-5">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📊</span>
+          <h2 className="font-semibold text-sm">Campaign Health</h2>
+          <span className="text-xs text-red-400 ml-auto">{error}</span>
+          <button onClick={fetchHealth} className="text-xs text-zinc-400 hover:text-white ml-2 transition-colors">↻</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!report) return null;
+
+  const { summary, campaigns, accounts } = report;
+
+  return (
+    <div className={`bg-zinc-900 border ${report.hasAlerts ? "border-red-800" : "border-zinc-800"} rounded-xl p-5 space-y-4`}>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📊</span>
+          <h2 className="font-semibold text-sm">Campaign Health</h2>
+          {report.hasAlerts && (
+            <span className="text-xs bg-red-900/50 text-red-400 border border-red-800 px-2 py-0.5 rounded-full animate-pulse">
+              ⚠ Alert
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {lastFetch && <span className="text-xs text-zinc-600">{lastFetch}</span>}
+          <button
+            onClick={fetchHealth}
+            className="text-zinc-500 hover:text-white text-sm transition-colors"
+            title="Refresh"
+          >
+            ↻
+          </button>
+        </div>
+      </div>
+
+      {/* Summary gauges */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-zinc-800 rounded-xl p-3">
+          <div className="text-xs text-zinc-500 mb-1">Active</div>
+          <div className="text-2xl font-bold text-green-400">{summary.activeCampaigns}</div>
+          <div className="text-xs text-zinc-600">of {summary.totalCampaigns} total</div>
+        </div>
+        <div className={`bg-zinc-800 rounded-xl p-3 ${summary.bouncePaused > 0 ? "ring-1 ring-red-800" : ""}`}>
+          <div className="text-xs text-zinc-500 mb-1">Bounce-Paused</div>
+          <div className={`text-2xl font-bold ${summary.bouncePaused > 0 ? "text-red-400" : "text-zinc-300"}`}>
+            {summary.bouncePaused}
+          </div>
+          <div className="text-xs text-zinc-600">campaigns</div>
+        </div>
+        <div className="bg-zinc-800 rounded-xl p-3">
+          <div className="text-xs text-zinc-500 mb-1">Avg Bounce</div>
+          <div className={`text-2xl font-bold ${
+            summary.avgBounceRate > 5 ? "text-red-400" :
+            summary.avgBounceRate > 3 ? "text-yellow-400" : "text-green-400"
+          }`}>
+            {summary.avgBounceRate}%
+          </div>
+          <div className="text-xs text-zinc-600">7-day rate</div>
+        </div>
+        <div className="bg-zinc-800 rounded-xl p-3">
+          <div className="text-xs text-zinc-500 mb-1">Total Sent</div>
+          <div className="text-2xl font-bold text-zinc-200">{summary.totalSent.toLocaleString()}</div>
+          <div className="text-xs text-zinc-600">last 7 days</div>
+        </div>
+      </div>
+
+      {/* Per-campaign rows */}
+      {campaigns.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-2">Campaigns</div>
+          <div className="space-y-2">
+            {campaigns.map((c) => (
+              <div
+                key={c.id}
+                className={`flex items-start gap-3 px-3 py-2.5 rounded-xl ${
+                  c.isCritical
+                    ? "bg-red-950/30 ring-1 ring-red-900/50"
+                    : "bg-zinc-800"
+                }`}
+              >
+                <div className="mt-1.5 shrink-0">
+                  <span className={`inline-block w-2 h-2 rounded-full ${
+                    c.status === 1 ? "bg-green-400" :
+                    c.status === 5 ? "bg-red-500 animate-pulse" :
+                    c.status === 2 ? "bg-yellow-500" : "bg-zinc-500"
+                  }`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-sm font-medium text-zinc-200 truncate">{c.name}</span>
+                    <span className={`text-xs shrink-0 capitalize ${
+                      c.status === 5 ? "text-red-400 font-semibold" :
+                      c.status === 1 ? "text-green-400" : "text-zinc-500"
+                    }`}>
+                      {c.statusLabel}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-zinc-500">Bounce rate</span>
+                        <span className={`text-xs font-mono ${
+                          c.bounceRate > 5 ? "text-red-400" :
+                          c.bounceRate > 3 ? "text-yellow-400" : "text-zinc-400"
+                        }`}>
+                          {c.bounceRate}%
+                        </span>
+                      </div>
+                      <BounceGauge rate={c.bounceRate} />
+                    </div>
+                    <div className="text-xs text-zinc-600 shrink-0 text-right">
+                      <div>{c.sent.toLocaleString()} sent</div>
+                      <div>{c.replied} replied</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Mailbox statuses */}
+      {accounts.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-2">Mailboxes</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {accounts.map((a) => (
+              <div key={a.email} className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2">
+                <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                  String(a.status) === "1" || a.status === "active"   ? "bg-green-400" :
+                  String(a.status) === "2" || a.status === "paused"   ? "bg-yellow-500" :
+                  "bg-zinc-500"
+                }`} />
+                <span className="text-xs text-zinc-300 truncate flex-1">{a.email}</span>
+                <span className="text-xs text-zinc-600 shrink-0">
+                  {a.sentToday}/{a.dailyLimit ?? "?"} today
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Edit modal ───────────────────────────────────────────────────────────────
@@ -128,12 +386,8 @@ function EditModal({
     );
     setDraft({ ...draft, items });
   };
-
-  const removeItem = (i: number) =>
-    setDraft({ ...draft, items: draft.items.filter((_, idx) => idx !== i) });
-
-  const addItem = () =>
-    setDraft({ ...draft, items: [...draft.items, { name: "", url: "https://" }] });
+  const removeItem = (i: number) => setDraft({ ...draft, items: draft.items.filter((_, idx) => idx !== i) });
+  const addItem    = () => setDraft({ ...draft, items: [...draft.items, { name: "", url: "https://" }] });
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -142,7 +396,6 @@ function EditModal({
           <h2 className="font-semibold text-lg">{section.icon} {section.title}</h2>
           <button onClick={onCancel} className="text-zinc-400 hover:text-white text-xl leading-none">×</button>
         </div>
-
         <div className="p-5 space-y-3">
           {draft.items.map((item, i) => (
             <div key={i} className="flex gap-2 items-start">
@@ -168,7 +421,6 @@ function EditModal({
               </button>
             </div>
           ))}
-
           <button
             onClick={addItem}
             className="w-full py-2 rounded-lg border border-dashed border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-white text-sm transition-colors"
@@ -176,7 +428,6 @@ function EditModal({
             + Add link
           </button>
         </div>
-
         <div className="flex gap-3 p-5 border-t border-zinc-800">
           <button
             onClick={onCancel}
@@ -198,12 +449,12 @@ function EditModal({
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 export default function FluidOS() {
-  const [sections,    setSections]    = useState<Section[]>(DEFAULT_SECTIONS);
-  const [favorites,   setFavorites]   = useState<LinkItem[]>([]);
-  const [search,      setSearch]      = useState("");
-  const [editing,     setEditing]     = useState<Section | null>(null);
-  const [liveStatus,  setLiveStatus]  = useState<LiveStatus>({});
-  const [liveDetail,  setLiveDetail]  = useState<LiveDetail>({});
+  const [sections,  setSections]  = useState<Section[]>(DEFAULT_SECTIONS);
+  const [favorites, setFavorites] = useState<LinkItem[]>([]);
+  const [search,    setSearch]    = useState("");
+  const [editing,   setEditing]   = useState<Section | null>(null);
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>({});
+  const [liveDetail, setLiveDetail] = useState<LiveDetail>({});
   const [lastChecked, setLastChecked] = useState<string>("");
 
   // ── Load from localStorage ──
@@ -217,13 +468,8 @@ export default function FluidOS() {
   }, []);
 
   // ── Persist ──
-  useEffect(() => {
-    localStorage.setItem(STORAGE.sections, JSON.stringify(sections));
-  }, [sections]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE.favorites, JSON.stringify(favorites));
-  }, [favorites]);
+  useEffect(() => { localStorage.setItem(STORAGE.sections,  JSON.stringify(sections));  }, [sections]);
+  useEffect(() => { localStorage.setItem(STORAGE.favorites, JSON.stringify(favorites)); }, [favorites]);
 
   // ── Live health checks (proxied server-side to avoid CORS) ──
   const checkHealth = useCallback(async () => {
@@ -232,10 +478,10 @@ export default function FluidOS() {
     setLiveStatus({ ...checking });
 
     try {
-      const res = await fetch("/api/health", { cache: "no-store" });
+      const res  = await fetch("/api/health", { cache: "no-store" });
       const data: { label: string; status: "online" | "offline"; detail?: string }[] = await res.json();
       const next: LiveStatus = {};
-      const det: LiveDetail  = {};
+      const det:  LiveDetail = {};
       for (const item of data) {
         next[item.label] = item.status;
         if (item.detail) det[item.label] = item.detail;
@@ -254,7 +500,7 @@ export default function FluidOS() {
 
   useEffect(() => {
     checkHealth();
-    const t = setInterval(checkHealth, 60000);
+    const t = setInterval(checkHealth, 60_000);
     return () => clearInterval(t);
   }, [checkHealth]);
 
@@ -284,10 +530,8 @@ export default function FluidOS() {
       .filter((s) => s.items.length > 0);
   }, [search, sections]);
 
-  const now = new Date();
-  const greeting =
-    now.getHours() < 12 ? "Good morning" :
-    now.getHours() < 17 ? "Good afternoon" : "Good evening";
+  const now      = new Date();
+  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
@@ -329,7 +573,6 @@ export default function FluidOS() {
       </header>
 
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
-
         {/* ── SEARCH ── */}
         <input
           placeholder="Search tools..."
@@ -386,6 +629,9 @@ export default function FluidOS() {
           })}
         </div>
 
+        {/* ── CAMPAIGN HEALTH MONITOR ── */}
+        <CampaignHealthMonitor />
+
         {/* ── SECTIONS GRID ── */}
         {filtered.length === 0 ? (
           <p className="text-zinc-500 text-center py-12">No tools match &quot;{search}&quot;</p>
@@ -431,9 +677,7 @@ export default function FluidOS() {
                       <button
                         onClick={() => toggleFavorite(item)}
                         className={`ml-2 text-sm transition-colors ${
-                          isFav(item)
-                            ? "text-yellow-400"
-                            : "text-zinc-600 opacity-0 group-hover:opacity-100"
+                          isFav(item) ? "text-yellow-400" : "text-zinc-600 opacity-0 group-hover:opacity-100"
                         }`}
                         title={isFav(item) ? "Remove from quick access" : "Add to quick access"}
                       >
