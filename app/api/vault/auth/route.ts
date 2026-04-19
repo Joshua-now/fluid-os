@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const VAULT_PASSWORD = "FluidVault2026";
+const VAULT_PASSWORD = process.env.VAULT_PASSWORD;
 
 export async function POST(req: NextRequest) {
   const { password } = await req.json();
