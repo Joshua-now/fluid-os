@@ -83,7 +83,7 @@ export const CREDENTIALS: Credential[] = [
     name: "n8n API Key",
     service: "n8n",
     description: "Used by FluidOS health checks and workflow patching",
-    expiresAt: "2026-05-09",
+        expiresAt: null,
     locations: [
       { type: "manual", note: "Regenerate at n8n Settings → API. Update fluid-os env var N8N_API_KEY and all hardcoded workflow nodes." },
     ],
