@@ -3,13 +3,7 @@ import { NextResponse } from "next/server";
 const INSTANTLY_BASE = "https://api.instantly.ai/api/v2";
 
 function getAuthHeader(): string {
-  const raw = process.env.INSTANTLY_API_KEY ?? "";
-  try {
-    const decoded = Buffer.from(raw, "base64").toString("utf8");
-    return `Bearer ${decoded}`;
-  } catch {
-    return `Bearer ${raw}`;
-  }
+  return "Bearer ${process.env.INSTANTLY_API_KEY ?? ""}";
 }
 
 async function instantly<T>(path: string, options?: RequestInit): Promise<T> {
