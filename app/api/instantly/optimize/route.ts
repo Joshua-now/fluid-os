@@ -13,7 +13,7 @@ const RULES = {
 };
 
 function getAuthHeader(): string {
-  return "Bearer ${process.env.INSTANTLY_API_KEY ?? ""}";
+return `Bearer ${process.env.INSTANTLY_API_KEY ?? ""}`;
 }
 
 async function instantly<T>(path: string, options?: RequestInit): Promise<T> {
