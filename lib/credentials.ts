@@ -115,9 +115,8 @@ export const CREDENTIALS: Credential[] = [
     description: "Creates contacts and updates pipeline in GHL",
     expiresAt: null,
     locations: [
-      { type: "n8n_code", workflowId: "lFm6wiwlgOalsqRr", nodeNames: ["Create GHL Contact", "Hot Lead Phone Alert"] },
-    { type: "n8n_code", workflowId: "9Hhvi0Pwfi0LOg30", nodeNames: ["Update GHL Contact", "Send Confirmation Email"] },
-    { type: "manual", note: "Create GHL Opportunity in Reply Handler uses HTTP Request node — update URL credential there too." },
+      { type: "railway", project: "fluid-os", service: "n8n-production-5955", varName: "GHL_PIT_TOKEN" },
+      { type: "manual", note: "Code nodes now read process.env.GHL_PIT_TOKEN. Also update the GHL credential on the HTTP Request node for Create GHL Opportunity in Reply Handler." },
     ],
   },
 ];
