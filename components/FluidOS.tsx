@@ -371,6 +371,9 @@ export default function FluidOS() {
           <span className="text-zinc-500 text-sm hidden sm:block">{greeting}, Joshua</span>
         </div>
         <div className="flex items-center gap-4">
+          <a href="/metrics" className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-zinc-800">
+            <span>📊</span><span className="hidden sm:inline">Metrics</span>
+          </a>
           <a href="/vault" className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-zinc-800">
             <span>🔐</span><span className="hidden sm:inline">Vault</span>
           </a>
