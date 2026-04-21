@@ -11,7 +11,7 @@ async function ghlGet(path: string) {
     headers: { "Authorization": `Bearer ${GHL_TOKEN}`, "Version": "2021-07-28" },
     signal: AbortSignal.timeout(10000),
   });
-  if (\!res.ok) throw new Error(`GHL ${res.status}: ${path}`);
+  if (!res.ok) throw new Error(`GHL ${res.status}: ${path}`);
   return res.json();
 }
 
