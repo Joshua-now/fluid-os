@@ -1,6 +1,6 @@
 // Central credential registry
 // Each entry describes one API key / token in the system.
-// `expiresAt` is ISO date string — null means no known expiry.
+// `expiresAt` is ISO date string â null means no known expiry.
 // `locations` tells the propagation API where to push updates.
 
 export type CredLocation =
@@ -83,9 +83,9 @@ export const CREDENTIALS: Credential[] = [
     name: "n8n API Key",
     service: "n8n",
     description: "Used by FluidOS health checks and workflow patching",
-    expiresAt: "2026-05-09",
+        expiresAt: null,
     locations: [
-      { type: "manual", note: "Regenerate at n8n Settings → API. Update fluid-os env var N8N_API_KEY and all hardcoded workflow nodes." },
+      { type: "manual", note: "Regenerate at n8n Settings â API. Update fluid-os env var N8N_API_KEY and all hardcoded workflow nodes." },
     ],
   },
   {
@@ -115,7 +115,8 @@ export const CREDENTIALS: Credential[] = [
     description: "Creates contacts and updates pipeline in GHL",
     expiresAt: null,
     locations: [
-      { type: "manual", note: "Stored inside n8n Hot Lead Phone Alert node parameters. Update via n8n UI." },
+      { type: "railway", project: "fluid-os", service: "n8n-production-5955", varName: "GHL_PIT_TOKEN" },
+      { type: "manual", note: "Code nodes now read process.env.GHL_PIT_TOKEN. Also update the GHL credential on the HTTP Request node for Create GHL Opportunity in Reply Handler." },
     ],
   },
 ];
