@@ -377,6 +377,9 @@ export default function FluidOS() {
           <a href="/vault" className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-zinc-800">
             <span>🔐</span><span className="hidden sm:inline">Vault</span>
           </a>
+          <a href="/facebook" className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-zinc-800">
+            <span>📘</span><span className="hidden sm:inline">Facebook</span>
+          </a>
           {["n8n", "Switchboard"].map((label) => (
             <div key={label} className="flex items-center gap-1.5 text-xs text-zinc-400">
               <Dot status={liveStatus[label] ?? "unknown"} /><span className="hidden sm:inline">{label}</span>

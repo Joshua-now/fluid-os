@@ -37,8 +37,7 @@ const GROUPS = [
     icon: "👷",
     name: "FL Roofers Contractors & Subs",
     meta: "Roofing · Subs",
-    url: "https://www.facebook.com/search/groups/?q=FL+Roofers+Contractors+Subs",
-    unverified: true,
+    url: "https://www.facebook.com/groups/1465539190883009",
   },
 ];
 
@@ -115,7 +114,6 @@ export default function FacebookPage() {
               </a>
             ))}
           </div>
-          <p className="text-xs text-zinc-700">* FL Roofers Contractors &amp; Subs not publicly indexed — paste the direct URL in chat to update</p>
         </section>
 
         {/* Comment Triage */}
