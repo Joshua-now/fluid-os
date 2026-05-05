@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const BOB_API = process.env.NEXT_PUBLIC_BOB_API_URL || "https://frontend-production-33e9.up.railway.app";
+const BOB_API = process.env.NEXT_PUBLIC_BOB_API_URL || "https://backend-production-b9fc.up.railway.app";
 
 /* ─────────────────────────────────────────
    Types
