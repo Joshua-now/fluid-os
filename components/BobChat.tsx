@@ -181,6 +181,7 @@ export default function BobChat() {
   const [status, setStatus]     = useState<ServiceStatus | null>(null);
   const bottomRef               = useRef<HTMLDivElement>(null);
   const textareaRef             = useRef<HTMLTextAreaElement>(null);
+  const sendingRef              = useRef(false);
 
   /* Fetch status on mount */
   useEffect(() => {
@@ -223,7 +224,8 @@ export default function BobChat() {
   /* Send message */
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || sendingRef.current) return;
+    sendingRef.current = true;
 
     const userMsg: Message = { id: uid(), role: "user", text: trimmed, ts: Date.now() };
     setMessages(prev => [...prev, userMsg]);
@@ -263,8 +265,9 @@ export default function BobChat() {
       }]);
     } finally {
       setLoading(false);
+      sendingRef.current = false;
     }
-  }, [loading, messages]);
+  }, [messages]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
