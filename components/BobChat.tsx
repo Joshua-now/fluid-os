@@ -44,11 +44,12 @@ function statusColor(v: string) {
 ───────────────────────────────────────── */
 function VoiceButton({ onTranscript, disabled }: { onTranscript: (t: string) => void; disabled: boolean }) {
   const [listening, setListening] = useState(false);
-  const recRef = useRef<InstanceType<typeof window.SpeechRecognition> | null>(null);
+  const recRef = useRef<any>(null);
 
   const toggle = useCallback(() => {
-    const SR = (window as typeof window & { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition
-            || (window as typeof window & { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
     if (!SR) { alert("Voice input requires Chrome or Edge."); return; }
 
     if (listening) {
@@ -63,7 +64,7 @@ function VoiceButton({ onTranscript, disabled }: { onTranscript: (t: string) => 
     rec.maxAlternatives = 1;
     recRef.current = rec;
 
-    rec.onresult = (e: SpeechRecognitionEvent) => {
+    rec.onresult = (e: any) => {
       const transcript = e.results[0][0].transcript;
       onTranscript(transcript);
     };
