@@ -148,9 +148,11 @@ function Bubble({ msg }: { msg: Message }) {
             : "bg-zinc-800 text-zinc-100 rounded-bl-sm"}`}
       >
         <p className="whitespace-pre-wrap">{msg.text}</p>
-        <p className="text-[10px] mt-1 opacity-40 text-right">
-          {new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </p>
+        {msg.ts > 0 && (
+          <p className="text-[10px] mt-1 opacity-40 text-right">
+            {new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </p>
+        )}
       </div>
       {isUser && (
         <div className="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold ml-2 mt-0.5">
@@ -170,7 +172,7 @@ export default function BobChat() {
       id: "welcome",
       role: "bob",
       text: "Hey Joshua 👋 I'm Bob — your AI field office. I've got eyes on GHL, Instantly, Switchboard, n8n, and Slack. What do you need?",
-      ts: Date.now(),
+      ts: 0,
     },
   ]);
   const [input, setInput]       = useState("");
