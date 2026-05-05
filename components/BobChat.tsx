@@ -187,7 +187,16 @@ export default function BobChat() {
     async function fetchStatus() {
       try {
         const res = await fetch(`${BOB_API}/api/desk/status`, { signal: AbortSignal.timeout(8000) });
-        if (res.ok) setStatus(await res.json());
+        if (res.ok) {
+          const raw = await res.json();
+          setStatus({
+            slack:       raw.slack?.ok       ? 'online' : (raw.slack       ? 'offline' : 'unknown'),
+            ghl:         raw.ghl?.ok         ? 'online' : (raw.ghl         ? 'offline' : 'unknown'),
+            instantly:   raw.instantly?.ok   ? 'online' : (raw.instantly   ? 'offline' : 'unknown'),
+            switchboard: raw.switchboard?.ok ? 'online' : (raw.switchboard ? 'offline' : 'unknown'),
+            n8n:         raw.n8n?.ok         ? 'online' : (raw.n8n         ? 'offline' : 'unknown'),
+          });
+        }
       } catch {
         // leave null
       } finally {
