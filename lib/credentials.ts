@@ -6,6 +6,7 @@
 export type CredLocation =
   | { type: "railway"; project: string; service: string; varName: string }
   | { type: "n8n_code"; workflowId: string; nodeNames: string[] }
+  | { type: "n8n_credential"; credentialId: string; credentialType: string; dataKey: string }
   | { type: "manual"; note: string };
 
 export interface Credential {
