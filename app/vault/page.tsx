@@ -166,6 +166,75 @@ function EditModal({
   );
 }
 
+// ─── Reveal Modal ─────────────────────────────────────────────────────────────
+function RevealModal({ cred, onClose }: { cred: CredSummary; onClose: () => void }) {
+  const [value, setValue]   = useState<string | null>(null);
+  const [hint, setHint]     = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied]  = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/vault/credentials/reveal?id=${cred.id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setValue(d.value ?? null);
+        setHint(d.hint ?? "");
+        setLoading(false);
+      })
+      .catch(() => {
+        setHint("Failed to fetch value.");
+        setLoading(false);
+      });
+  }, [cred.id]);
+
+  const copy = () => {
+    if (!value) return;
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-lg">
+        <div className="flex items-center justify-between p-5 border-b border-zinc-800">
+          <div>
+            <h2 className="font-semibold">{cred.name}</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">Current live value</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white text-xl leading-none ml-4">×</button>
+        </div>
+        <div className="p-5 space-y-4">
+          {loading ? (
+            <p className="text-sm text-zinc-400">Loading…</p>
+          ) : value ? (
+            <>
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 font-mono text-xs text-green-400 break-all">
+                {value}
+              </div>
+              <button
+                onClick={copy}
+                className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-semibold transition-colors"
+              >
+                {copied ? "Copied ✓" : "Copy to clipboard"}
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-zinc-400">{hint || "Value not available."}</p>
+          )}
+          <button
+            onClick={onClose}
+            className="w-full py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Login gate ───────────────────────────────────────────────────────────────
 function LoginGate({ onAuth }: { onAuth: () => void }) {
   const [pw, setPw] = useState("");
@@ -231,6 +300,7 @@ export default function VaultPage() {
   const [checking, setChecking] = useState(true);
   const [creds, setCreds] = useState<CredSummary[]>([]);
   const [editing, setEditing] = useState<CredSummary | null>(null);
+  const [revealing, setRevealing] = useState<CredSummary | null>(null);
 
   // Check if already authed via cookie
   useEffect(() => {
@@ -358,12 +428,20 @@ export default function VaultPage() {
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => setEditing(cred)}
-                      className="ml-4 flex-shrink-0 px-4 py-1.5 text-xs font-medium bg-zinc-800 hover:bg-blue-600 border border-zinc-700 hover:border-blue-500 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                    >
-                      Rotate
-                    </button>
+                    <div className="ml-4 flex-shrink-0 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={() => setRevealing(cred)}
+                        className="px-3 py-1.5 text-xs font-medium bg-zinc-800 hover:bg-emerald-700 border border-zinc-700 hover:border-emerald-600 rounded-lg transition-all"
+                      >
+                        Reveal
+                      </button>
+                      <button
+                        onClick={() => setEditing(cred)}
+                        className="px-3 py-1.5 text-xs font-medium bg-zinc-800 hover:bg-blue-600 border border-zinc-700 hover:border-blue-500 rounded-lg transition-all"
+                      >
+                        Rotate
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -375,6 +453,11 @@ export default function VaultPage() {
           Fluid OS Vault · Changes propagate to n8n and Railway automatically
         </p>
       </div>
+
+      {/* Reveal modal */}
+      {revealing && (
+        <RevealModal cred={revealing} onClose={() => setRevealing(null)} />
+      )}
 
       {/* Edit modal */}
       {editing && (
