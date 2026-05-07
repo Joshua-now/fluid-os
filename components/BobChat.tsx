@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const BOB_API = process.env.NEXT_PUBLIC_BOB_API_URL || "https://contractor-os-production.up.railway.app";
+const BOB_API = process.env.NEXT_PUBLIC_BOB_API_URL || "https://backend-production-b9fc.up.railway.app";
 
 /* ─────────────────────────────────────────
    Types
@@ -44,11 +44,12 @@ function statusColor(v: string) {
 ───────────────────────────────────────── */
 function VoiceButton({ onTranscript, disabled }: { onTranscript: (t: string) => void; disabled: boolean }) {
   const [listening, setListening] = useState(false);
-  const recRef = useRef<InstanceType<typeof window.SpeechRecognition> | null>(null);
+  const recRef = useRef<any>(null);
 
   const toggle = useCallback(() => {
-    const SR = (window as typeof window & { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition
-            || (window as typeof window & { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
     if (!SR) { alert("Voice input requires Chrome or Edge."); return; }
 
     if (listening) {
@@ -63,7 +64,7 @@ function VoiceButton({ onTranscript, disabled }: { onTranscript: (t: string) => 
     rec.maxAlternatives = 1;
     recRef.current = rec;
 
-    rec.onresult = (e: SpeechRecognitionEvent) => {
+    rec.onresult = (e: any) => {
       const transcript = e.results[0][0].transcript;
       onTranscript(transcript);
     };
@@ -147,9 +148,11 @@ function Bubble({ msg }: { msg: Message }) {
             : "bg-zinc-800 text-zinc-100 rounded-bl-sm"}`}
       >
         <p className="whitespace-pre-wrap">{msg.text}</p>
-        <p className="text-[10px] mt-1 opacity-40 text-right">
-          {new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </p>
+        {msg.ts > 0 && (
+          <p className="text-[10px] mt-1 opacity-40 text-right">
+            {new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </p>
+        )}
       </div>
       {isUser && (
         <div className="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold ml-2 mt-0.5">
@@ -169,7 +172,7 @@ export default function BobChat() {
       id: "welcome",
       role: "bob",
       text: "Hey Joshua 👋 I'm Bob — your AI field office. I've got eyes on GHL, Instantly, Switchboard, n8n, and Slack. What do you need?",
-      ts: Date.now(),
+      ts: 0,
     },
   ]);
   const [input, setInput]       = useState("");
@@ -178,13 +181,23 @@ export default function BobChat() {
   const [status, setStatus]     = useState<ServiceStatus | null>(null);
   const bottomRef               = useRef<HTMLDivElement>(null);
   const textareaRef             = useRef<HTMLTextAreaElement>(null);
+  const sendingRef              = useRef(false);
 
   /* Fetch status on mount */
   useEffect(() => {
     async function fetchStatus() {
       try {
         const res = await fetch(`${BOB_API}/api/desk/status`, { signal: AbortSignal.timeout(8000) });
-        if (res.ok) setStatus(await res.json());
+        if (res.ok) {
+          const raw = await res.json();
+          setStatus({
+            slack:       raw.slack?.ok       ? 'online' : (raw.slack       ? 'offline' : 'unknown'),
+            ghl:         raw.ghl?.ok         ? 'online' : (raw.ghl         ? 'offline' : 'unknown'),
+            instantly:   raw.instantly?.ok   ? 'online' : (raw.instantly   ? 'offline' : 'unknown'),
+            switchboard: raw.switchboard?.ok ? 'online' : (raw.switchboard ? 'offline' : 'unknown'),
+            n8n:         raw.n8n?.ok         ? 'online' : (raw.n8n         ? 'offline' : 'unknown'),
+          });
+        }
       } catch {
         // leave null
       } finally {
@@ -211,7 +224,8 @@ export default function BobChat() {
   /* Send message */
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || sendingRef.current) return;
+    sendingRef.current = true;
 
     const userMsg: Message = { id: uid(), role: "user", text: trimmed, ts: Date.now() };
     setMessages(prev => [...prev, userMsg]);
@@ -251,8 +265,9 @@ export default function BobChat() {
       }]);
     } finally {
       setLoading(false);
+      sendingRef.current = false;
     }
-  }, [loading, messages]);
+  }, [messages]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const GROUPS = [
+const GROUPS: { icon: string; name: string; meta: string; url: string; unverified?: boolean }[] = [
   {
     icon: "❄️",
     name: "FLORIDA HVAC-R HEADQUARTERS",
