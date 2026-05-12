@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -187,7 +187,7 @@ export default function BobChat() {
   useEffect(() => {
     async function fetchStatus() {
       try {
-        const res = await fetch(`${BOB_API}/api/desk/status`, { signal: AbortSignal.timeout(8000) });
+        const res = await fetch(`${BOB_API}/api/bob/status`, { signal: AbortSignal.timeout(8000) });
         if (res.ok) {
           const raw = await res.json();
           setStatus({
@@ -240,7 +240,7 @@ export default function BobChat() {
     }));
 
     try {
-      const res = await fetch(`${BOB_API}/api/desk/chat`, {
+      const res = await fetch(`${BOB_API}/api/bob/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
