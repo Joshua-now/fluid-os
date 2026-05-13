@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 /**
- * Bob — Fluid Productions AI Office Manager
+ * Harbor — Fluid Productions Founder's AI
  * "Office in a box. Founder's AI partner."
  *
  * Tools:
@@ -21,10 +21,10 @@
 import axios from "axios";
 import { Pool } from "pg";
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const BOB_MODEL      = process.env.BOB_MODEL || "anthropic/claude-opus-4-5";
-const OLLAMA_BASE    = process.env.RUNPOD_OLLAMA_URL || null;
-const OLLAMA_MODEL   = process.env.OLLAMA_MODEL || "llama3.1";
+const OPENROUTER_URL  = "https://openrouter.ai/api/v1/chat/completions";
+const HARBOR_MODEL    = process.env.BOB_MODEL || "meta-llama/llama-3.1-70b-instruct";
+const OLLAMA_BASE     = process.env.RUNPOD_OLLAMA_URL || null;
+const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3.1";
 
 // Simple text generation — prefer Ollama (cheap/fast), fallback to OpenRouter
 async function orComplete(messages: any[]): Promise<any> {
@@ -42,7 +42,7 @@ async function orComplete(messages: any[]): Promise<any> {
   }
   const r = await axios.post(
     OPENROUTER_URL,
-    { model: BOB_MODEL, messages, max_tokens: 1000, temperature: 0.7 },
+    { model: HARBOR_MODEL, messages, max_tokens: 1000, temperature: 0.7 },
     {
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -63,7 +63,7 @@ let memoryReady = false;
 async function ensureMemoryTable() {
   if (memoryReady) return;
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS bob_memory (
+    CREATE TABLE IF NOT EXISTS harbor_memory (
       id          SERIAL PRIMARY KEY,
       key         TEXT NOT NULL UNIQUE,
       value       TEXT NOT NULL,
@@ -71,7 +71,7 @@ async function ensureMemoryTable() {
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS bob_memory_key_idx ON bob_memory (key);
+    CREATE INDEX IF NOT EXISTS harbor_memory_key_idx ON harbor_memory (key);
   `);
   memoryReady = true;
 }
@@ -111,8 +111,8 @@ async function ghlOpportunities(contactId: string) {
   return r.data?.opportunities || [];
 }
 
-// ─── BOB'S TOOL DEFINITIONS ───────────────────────────────────────────────────
-export const BOB_TOOLS: Anthropic.Tool[] = [
+// ─── HARBOR'S TOOL DEFINITIONS ────────────────────────────────────────────────
+export const HARBOR_TOOLS = [
   // ── CRM & SALES ──────────────────────────────────────────────────────────────
   {
     name: "look_up_contact",
@@ -419,7 +419,7 @@ export const BOB_TOOLS: Anthropic.Tool[] = [
   {
     name: "make_outbound_call",
     description:
-      "Place an outbound phone call via Telnyx. Bob speaks the message when answered. Use for client follow-ups, invoice notifications, or appointment reminders. Bob's number: (321) 465-7132.",
+      "Place an outbound phone call via Telnyx. Harbor speaks the message when answered. Use for client follow-ups, invoice notifications, or appointment reminders.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -435,7 +435,7 @@ export const BOB_TOOLS: Anthropic.Tool[] = [
   {
     name: "remember",
     description:
-      "Save something to persistent memory — a fact, a deal detail, a preference, a follow-up note. Bob will remember this across conversations.",
+      "Save something to persistent memory — a fact, a deal detail, a preference, a follow-up note. Harbor will remember this across conversations.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -451,7 +451,7 @@ export const BOB_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "recall",
-    description: "Search Bob's memory for anything previously saved. Use when Joshua references something from a past conversation.",
+    description: "Search Harbor's memory for anything previously saved. Use when Joshua references something from a past conversation.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -464,7 +464,7 @@ export const BOB_TOOLS: Anthropic.Tool[] = [
 
 // ─── TOOL EXECUTOR ────────────────────────────────────────────────────────────
 export async function executeTool(name: string, input: any): Promise<any> {
-  console.log(`[Bob] Tool: ${name}`, JSON.stringify(input).slice(0, 120));
+  console.log(`[Harbor] Tool: ${name}`, JSON.stringify(input).slice(0, 120));
 
   switch (name) {
 
@@ -653,7 +653,6 @@ export async function executeTool(name: string, input: any): Promise<any> {
 
     case "add_to_campaign": {
       try {
-        // Find campaign by name
         const listR = await axios.get("https://api.instantly.ai/api/v2/campaigns", {
           headers: { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}` },
           params: { limit: 50 },
@@ -666,7 +665,6 @@ export async function executeTool(name: string, input: any): Promise<any> {
         if (!campaign) {
           return { success: false, error: `No campaign matching "${input.campaign_name}".`, available: campaigns.map((c: any) => c.name) };
         }
-        // Add lead
         await axios.post(
           `https://api.instantly.ai/api/v2/campaigns/${campaign.id}/leads`,
           {
@@ -761,7 +759,6 @@ export async function executeTool(name: string, input: any): Promise<any> {
       const token = process.env.META_ACCESS_TOKEN;
       if (!accountId || !token) return { error: "META credentials not set." };
       try {
-        // Find the campaign
         const listR = await axios.get(`https://graph.facebook.com/v19.0/act_${accountId}/campaigns`, {
           params: { access_token: token, fields: "name,status", limit: 50 },
           timeout: 10000,
@@ -994,8 +991,8 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
       const SERVICES = [
         { name: "n8n", url: `${process.env.N8N_BASE_URL}/healthz` },
         { name: "Switchboard", url: `${process.env.SWITCHBOARD_URL}/health` },
-        { name: "FieldDepth (contractor-os)", url: `${process.env.V2_URL}/api/health` },
-        { name: "FluidOS", url: `${process.env.SELF_URL}/api/bob/status` },
+        { name: "contractor-os", url: `${process.env.V2_URL}/api/health` },
+        { name: "FluidOS", url: `${process.env.SELF_URL}/api/harbor/status` },
       ].filter((s) => s.url);
 
       const results = await Promise.all(
@@ -1027,7 +1024,7 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
             client_state: Buffer.from(
               JSON.stringify({ message: input.message, contact: input.contact_name })
             ).toString("base64"),
-            webhook_url: `${process.env.SELF_URL}/api/bob/voice`,
+            webhook_url: `${process.env.SELF_URL}/api/harbor/voice`,
           },
           {
             headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` },
@@ -1045,7 +1042,7 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
       try {
         await ensureMemoryTable();
         await pool.query(
-          `INSERT INTO bob_memory (key, value, category, updated_at)
+          `INSERT INTO harbor_memory (key, value, category, updated_at)
            VALUES ($1, $2, $3, NOW())
            ON CONFLICT (key) DO UPDATE SET value = $2, category = $3, updated_at = NOW()`,
           [input.key, input.value, input.category || "other"]
@@ -1060,7 +1057,7 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
       try {
         await ensureMemoryTable();
         const r = await pool.query(
-          `SELECT key, value, category, updated_at FROM bob_memory
+          `SELECT key, value, category, updated_at FROM harbor_memory
            WHERE key ILIKE $1 OR value ILIKE $1
            ORDER BY updated_at DESC LIMIT 10`,
           [`%${input.query}%`]
@@ -1078,7 +1075,7 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
 }
 
 // ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
-export const BOB_SYSTEM_PROMPT = `You are Bob — Joshua's AI founder's partner and office-in-a-box for Fluid Productions.
+export const HARBOR_SYSTEM_PROMPT = `You are Harbor — Joshua's AI founder's partner and office-in-a-box for Fluid Productions.
 
 WHO JOSHUA IS:
 Joshua runs Fluid Productions, an AI automation company for home service contractors (HVAC, plumbing, roofing, electrical). His main products are Speed-to-Lead (AI answers missed calls instantly) and After-Hours AI (books jobs overnight). He uses GHL CRM, Instantly for cold email, Switchboard for AI voice bots, n8n for 76+ automation workflows, and Guardian/Sentinel for self-healing. You monitor all of it.
@@ -1096,5 +1093,4 @@ BEHAVIOR:
 - When writing content, produce final copy — not outlines, not drafts, the real thing.
 - When asked to remember something, always use the remember tool so it persists.
 - Chain tools when it makes sense. Research a prospect then write their cold email in one response.
-
-You have 25 tools. Use as many as the task requires.`;
+`;

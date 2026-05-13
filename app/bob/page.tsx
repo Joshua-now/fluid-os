@@ -1,5 +1,5 @@
-import BobChat from "@/components/BobChat";
+import { redirect } from "next/navigation";
 
 export default function BobPage() {
-  return <BobChat />;
+  redirect("/harbor");
 }

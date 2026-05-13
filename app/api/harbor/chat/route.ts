@@ -1,40 +1,27 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 /**
- * Harbor — Fluid Productions AI Office Manager
- * app/api/bob/chat/route.ts
+ * Harbor — Fluid Productions Founder's AI
+ * app/api/harbor/chat/route.ts
  *
  * POST { message: string, conversationHistory?: {role, content}[] }
  * → { reply: string }
- *
- * Model Router:
- *   Tool-calling (agentic loops) → OpenRouter  (reliable function calling)
- *   Content generation           → RunPod Ollama (fast, cheap, private)
- *   Fallback                     → OpenRouter   (if Ollama unreachable)
- *
- * Env vars:
- *   OPENROUTER_API_KEY   — required
- *   RUNPOD_OLLAMA_URL    — optional, e.g. https://asbb6bjay3jwo4-11434.proxy.runpod.net
- *   OLLAMA_MODEL         — optional, default: llama3.1
- *   BOB_MODEL            — optional OpenRouter model override, default: anthropic/claude-opus-4-5
- *   BOB_MODEL_OVERRIDE   — optional, force all calls to "openrouter" or "ollama"
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
-import { BOB_TOOLS, BOB_SYSTEM_PROMPT, executeTool } from "@/lib/bob/brain";
+import { HARBOR_TOOLS, HARBOR_SYSTEM_PROMPT, executeTool } from "@/lib/harbor/brain";
 
-// ─── Model config ─────────────────────────────────────────────────────────────
-const OPENROUTER_URL  = "https://openrouter.ai/api/v1/chat/completions";
-const OR_MODEL        = process.env.BOB_MODEL || "anthropic/claude-opus-4-5";
-const OLLAMA_URL      = process.env.RUNPOD_OLLAMA_URL
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OR_MODEL       = process.env.BOB_MODEL || "meta-llama/llama-3.1-70b-instruct";
+const OLLAMA_URL     = process.env.RUNPOD_OLLAMA_URL
   ? `${process.env.RUNPOD_OLLAMA_URL}/v1/chat/completions`
   : null;
-const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3.1";
-const MODEL_OVERRIDE  = process.env.BOB_MODEL_OVERRIDE || null; // "openrouter" | "ollama"
+const OLLAMA_MODEL   = process.env.OLLAMA_MODEL || "llama3.1";
+const MODEL_OVERRIDE = process.env.BOB_MODEL_OVERRIDE || null;
 
-// Convert Anthropic-style tool defs → OpenAI function format
-const OPENAI_TOOLS = BOB_TOOLS.map((t: any) => ({
+// Convert tool defs → OpenAI function format
+const OPENAI_TOOLS = HARBOR_TOOLS.map((t: any) => ({
   type: "function",
   function: {
     name: t.name,
@@ -43,9 +30,6 @@ const OPENAI_TOOLS = BOB_TOOLS.map((t: any) => ({
   },
 }));
 
-// ─── Model router ─────────────────────────────────────────────────────────────
-// needsTools = true  → OpenRouter (Claude handles tool orchestration reliably)
-// needsTools = false → Ollama if available, else OpenRouter
 function selectBackend(needsTools: boolean): "openrouter" | "ollama" {
   if (MODEL_OVERRIDE === "openrouter") return "openrouter";
   if (MODEL_OVERRIDE === "ollama") return "ollama";
@@ -54,17 +38,9 @@ function selectBackend(needsTools: boolean): "openrouter" | "ollama" {
   return "openrouter";
 }
 
-// ─── OpenRouter call ──────────────────────────────────────────────────────────
 async function callOpenRouter(messages: any[], withTools: boolean): Promise<any> {
-  const body: any = {
-    model: OR_MODEL,
-    messages,
-    max_tokens: 1500,
-  };
-  if (withTools) {
-    body.tools = OPENAI_TOOLS;
-    body.tool_choice = "auto";
-  }
+  const body: any = { model: OR_MODEL, messages, max_tokens: 1500 };
+  if (withTools) { body.tools = OPENAI_TOOLS; body.tool_choice = "auto"; }
   const r = await axios.post(OPENROUTER_URL, body, {
     headers: {
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -77,28 +53,17 @@ async function callOpenRouter(messages: any[], withTools: boolean): Promise<any>
   return r.data;
 }
 
-// ─── Ollama call (RunPod) ─────────────────────────────────────────────────────
 async function callOllama(messages: any[]): Promise<any> {
   if (!OLLAMA_URL) throw new Error("RUNPOD_OLLAMA_URL not set");
-  const r = await axios.post(
-    OLLAMA_URL,
-    {
-      model: OLLAMA_MODEL,
-      messages,
-      stream: false,
-    },
-    {
-      headers: { "Content-Type": "application/json" },
-      timeout: 120000, // Ollama can be slower on cold start
-    }
-  );
+  const r = await axios.post(OLLAMA_URL, { model: OLLAMA_MODEL, messages, stream: false }, {
+    headers: { "Content-Type": "application/json" },
+    timeout: 120000,
+  });
   return r.data;
 }
 
-// ─── Unified chat call with fallback ─────────────────────────────────────────
 async function chat(messages: any[], needsTools: boolean): Promise<any> {
   const backend = selectBackend(needsTools);
-
   if (backend === "ollama") {
     try {
       console.log(`[Harbor] → Ollama (${OLLAMA_MODEL})`);
@@ -108,12 +73,10 @@ async function chat(messages: any[], needsTools: boolean): Promise<any> {
       return await callOpenRouter(messages, false);
     }
   }
-
   console.log(`[Harbor] → OpenRouter (${OR_MODEL})`);
   return await callOpenRouter(messages, needsTools);
 }
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const { message, conversationHistory = [] } = await req.json();
@@ -125,39 +88,32 @@ export async function POST(req: NextRequest) {
     }
 
     const messages: any[] = [
-      { role: "system", content: BOB_SYSTEM_PROMPT },
+      { role: "system", content: HARBOR_SYSTEM_PROMPT },
       ...conversationHistory.map((m: any) => ({
-        role: m.role === "bob" ? "assistant" : m.role,
+        role: m.role === "harbor" ? "assistant" : m.role,
         content: m.content,
       })),
       { role: "user", content: message },
     ];
 
-    // ── Agentic loop (OpenRouter handles tool orchestration) ──────────────────
     let iterations = 0;
     while (iterations < 8) {
       iterations++;
-
       const data = await chat(messages, true);
       const choice = data.choices?.[0];
       const msg = choice?.message;
       if (!msg) break;
 
       messages.push(msg);
-
       const finishReason = choice?.finish_reason;
 
-      // No tool calls → final reply
       if (finishReason !== "tool_calls" || !msg.tool_calls?.length) {
-        // If the final reply is pure text generation, could have gone to Ollama
-        // but at this point we already have the answer
         return NextResponse.json({
           reply: msg.content || "Done.",
           model: selectBackend(false) === "ollama" ? OLLAMA_MODEL : OR_MODEL,
         });
       }
 
-      // Execute tool calls in parallel
       const toolResults = await Promise.all(
         msg.tool_calls.map(async (tc: any) => {
           let args: any = {};
@@ -178,9 +134,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply: "Done.", model: OR_MODEL });
   } catch (err: any) {
     console.error("[Harbor] Error:", err?.response?.data || err?.message);
-    return NextResponse.json(
-      { error: "Harbor hit an error. Check Railway logs." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Harbor hit an error. Check Railway logs." }, { status: 500 });
   }
 }
