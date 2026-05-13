@@ -880,19 +880,23 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
       if (!match) return { ok: false, error: `No workflow matching "${input.workflow_name}".`, available: workflows.map((w: any) => w.name) };
 
       const action = input.action || "restart";
-      if (action === "activate") {
-        await axios.patch(`${base}/api/v1/workflows/${match.id}`, { active: true }, { headers, timeout: 8000 });
-        return { ok: true, message: `✅ "${match.name}" activated.` };
+      try {
+        if (action === "activate") {
+          await axios.put(`${base}/api/v1/workflows/${match.id}/activate`, {}, { headers, timeout: 8000 });
+          return { ok: true, message: `✅ "${match.name}" activated.` };
+        }
+        if (action === "deactivate") {
+          await axios.put(`${base}/api/v1/workflows/${match.id}/deactivate`, {}, { headers, timeout: 8000 });
+          return { ok: true, message: `⏸ "${match.name}" deactivated.` };
+        }
+        // restart = deactivate then activate
+        await axios.put(`${base}/api/v1/workflows/${match.id}/deactivate`, {}, { headers, timeout: 8000 });
+        await new Promise((r) => setTimeout(r, 700));
+        await axios.put(`${base}/api/v1/workflows/${match.id}/activate`, {}, { headers, timeout: 8000 });
+        return { ok: true, message: `🔄 "${match.name}" restarted.` };
+      } catch (err: any) {
+        return { ok: false, error: err.response?.data?.message || err.message, workflow: match.name };
       }
-      if (action === "deactivate") {
-        await axios.patch(`${base}/api/v1/workflows/${match.id}`, { active: false }, { headers, timeout: 8000 });
-        return { ok: true, message: `⏸ "${match.name}" deactivated.` };
-      }
-      // restart
-      await axios.patch(`${base}/api/v1/workflows/${match.id}`, { active: false }, { headers, timeout: 8000 });
-      await new Promise((r) => setTimeout(r, 700));
-      await axios.patch(`${base}/api/v1/workflows/${match.id}`, { active: true }, { headers, timeout: 8000 });
-      return { ok: true, message: `🔄 "${match.name}" restarted.` };
     }
 
     case "check_guardian_sentinel": {
