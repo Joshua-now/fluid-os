@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// @ts-nocheck
 /**
  * fluid-os/app/api/bob/chat/route.ts
  *

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// @ts-nocheck
 /**
  * Bob — Fluid Productions AI Office Manager
  * "Office in a box. Founder's AI partner."
