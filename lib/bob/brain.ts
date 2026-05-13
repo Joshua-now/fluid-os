@@ -18,11 +18,34 @@
  *  Memory           → remember, recall
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import axios from "axios";
 import { Pool } from "pg";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const BOB_MODEL = process.env.BOB_MODEL || "anthropic/claude-opus-4-5";
+
+async function orComplete(messages: any[], tools?: any[]): Promise<any> {
+  const body: any = {
+    model: BOB_MODEL,
+    messages,
+    max_tokens: 1500,
+    temperature: 0.7,
+  };
+  if (tools?.length) {
+    body.tools = tools;
+    body.tool_choice = "auto";
+  }
+  const r = await axios.post(OPENROUTER_URL, body, {
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.SELF_URL || "https://fluid-os.up.railway.app",
+      "X-Title": "Bob - Fluid OS",
+    },
+    timeout: 60000,
+  });
+  return r.data;
+}
 
 // ─── DB (for memory) — auto-creates table on first use ───────────────────────
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -753,7 +776,6 @@ export async function executeTool(name: string, input: any): Promise<any> {
 
     // ── RESEARCH & CONTENT ────────────────────────────────────────────────────
     case "research_prospect": {
-      // Bob uses Claude to synthesize a prospect brief from what he knows
       const prompt = `You are a sales researcher. Create a concise intelligence brief on this business:
 
 Business: ${input.business_name}
@@ -769,12 +791,8 @@ Based on your knowledge, provide:
 
 Keep it punchy — this is a pre-call brief, not an essay. 3-4 sentences per section max.`;
 
-      const r = await anthropic.messages.create({
-        model: "claude-opus-4-6",
-        max_tokens: 600,
-        messages: [{ role: "user", content: prompt }],
-      });
-      const brief = r.content.filter((c) => c.type === "text").map((c: any) => c.text).join("");
+      const r = await orComplete([{ role: "user", content: prompt }]);
+      const brief = r.choices?.[0]?.message?.content || "";
       return { business: input.business_name, brief };
     }
 
@@ -812,12 +830,8 @@ Task: ${instruction}
 
 Write clean copy only — no meta-commentary, no "here's a version...", just the content itself.`;
 
-      const r = await anthropic.messages.create({
-        model: "claude-opus-4-6",
-        max_tokens: 1000,
-        messages: [{ role: "user", content: prompt }],
-      });
-      const content = r.content.filter((c) => c.type === "text").map((c: any) => c.text).join("");
+      const r = await orComplete([{ role: "user", content: prompt }]);
+      const content = r.choices?.[0]?.message?.content || "";
       return { type: input.type, content };
     }
 
