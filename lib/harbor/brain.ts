@@ -621,31 +621,61 @@ export async function executeTool(name: string, input: any): Promise<any> {
     // ── INSTANTLY ─────────────────────────────────────────────────────────────
     case "check_instantly": {
       try {
+        const iHeaders = { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}` };
         const r = await axios.get("https://api.instantly.ai/api/v2/campaigns", {
-          headers: { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}` },
-          params: { limit: 20 },
+          headers: iHeaders,
+          params: { limit: 20, status: "all" },
           timeout: 8000,
         });
-        let campaigns: any[] = r.data?.campaigns || r.data || [];
+        let campaigns: any[] = r.data?.items || r.data?.campaigns || r.data || [];
+        if (!Array.isArray(campaigns)) campaigns = [];
         if (input.campaign_name) {
           campaigns = campaigns.filter((c: any) =>
             c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())
           );
         }
         if (!campaigns.length) return { found: false, message: "No campaigns found." };
-        return {
-          found: true,
-          count: campaigns.length,
-          campaigns: campaigns.map((c: any) => ({
-            name: c.name,
-            status: c.status,
-            sent: c.stats?.total_sent || 0,
-            opened: c.stats?.total_opened || 0,
-            replied: c.stats?.total_replied || 0,
-            open_rate: c.stats?.open_rate ? `${(c.stats.open_rate * 100).toFixed(1)}%` : "—",
-            reply_rate: c.stats?.reply_rate ? `${(c.stats.reply_rate * 100).toFixed(1)}%` : "—",
-          })),
-        };
+
+        // Fetch analytics for each campaign
+        const endDate = new Date().toISOString().split("T")[0];
+        const startDate = new Date(Date.now() - 90 * 86400000).toISOString().split("T")[0];
+
+        const withStats = await Promise.all(
+          campaigns.slice(0, 10).map(async (c: any) => {
+            try {
+              const aR = await axios.get("https://api.instantly.ai/api/v2/analytics/campaign/summary", {
+                headers: iHeaders,
+                params: { id: c.id, start_date: startDate, end_date: endDate },
+                timeout: 8000,
+              });
+              const a = aR.data || {};
+              return {
+                name: c.name,
+                status: c.status,
+                sent: a.emails_sent_count ?? a.contacted_count ?? 0,
+                opened: a.open_count ?? a.unique_opens ?? 0,
+                replied: a.reply_count ?? a.unique_replies ?? 0,
+                open_rate: a.open_rate ? `${(a.open_rate * 100).toFixed(1)}%` : "—",
+                reply_rate: a.reply_rate ? `${(a.reply_rate * 100).toFixed(1)}%` : "—",
+                leads: a.leads_count ?? c.leads_count ?? 0,
+              };
+            } catch {
+              // Fall back to campaign-level fields if analytics endpoint fails
+              return {
+                name: c.name,
+                status: c.status,
+                sent: c.leads_contacted ?? c.contacted_count ?? c.total_leads ?? 0,
+                opened: c.open_count ?? 0,
+                replied: c.reply_count ?? 0,
+                open_rate: "—",
+                reply_rate: "—",
+                leads: c.total_leads ?? 0,
+              };
+            }
+          })
+        );
+
+        return { found: true, count: withStats.length, campaigns: withStats };
       } catch (err: any) {
         return { ok: false, error: err.message };
       }
