@@ -1184,13 +1184,18 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
         { name: "n8n", url: `${process.env.N8N_BASE_URL}/healthz` },
         { name: "Switchboard", url: `${process.env.SWITCHBOARD_URL}/health` },
         { name: "FluidOS", url: `${process.env.SELF_URL}/api/harbor/status` },
-      ].filter((s) => s.url);
+        // GHL — check with a lightweight authenticated request
+        process.env.GHL_PIT_TOKEN ? { name: "GoHighLevel", url: "https://services.leadconnectorhq.com/locations/search?limit=1", authHeader: `Bearer ${process.env.GHL_PIT_TOKEN}` } : null,
+        // Instantly — check API reachability
+        process.env.INSTANTLY_API_KEY ? { name: "Instantly", url: "https://api.instantly.ai/api/v2/campaigns?limit=1", authHeader: `Bearer ${process.env.INSTANTLY_API_KEY}` } : null,
+      ].filter(Boolean) as { name: string; url: string; authHeader?: string }[];
 
       const results = await Promise.all(
-        SERVICES.map(async ({ name, url }) => {
+        SERVICES.map(async ({ name, url, authHeader }) => {
           const start = Date.now();
+          const headers: any = authHeader ? { Authorization: authHeader } : {};
           try {
-            const r = await axios.get(url, { timeout: 7000 });
+            const r = await axios.get(url, { headers, timeout: 7000 });
             return { name, status: "online", latencyMs: Date.now() - start, http: r.status };
           } catch (err: any) {
             if (err.response && [401, 403, 404].includes(err.response.status)) {
@@ -1200,7 +1205,8 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
           }
         })
       );
-      return { services: results };
+      const offline = results.filter(r => r.status === "offline");
+      return { services: results, summary: offline.length === 0 ? "All systems online" : `${offline.length} service(s) offline: ${offline.map(s => s.name).join(", ")}` };
     }
 
     // ── VOICE ─────────────────────────────────────────────────────────────────
