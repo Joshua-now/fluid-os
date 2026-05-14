@@ -11,6 +11,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
 import { HARBOR_TOOLS, HARBOR_SYSTEM_PROMPT, executeTool } from "@/lib/harbor/brain";
+import { Pool } from "pg";
+
+const memPool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+async function autoRecall(): Promise<string> {
+  try {
+    const r = await memPool.query(
+      `SELECT key, value, category, updated_at
+       FROM harbor_memory
+       ORDER BY updated_at DESC
+       LIMIT 20`
+    );
+    if (!r.rows.length) return "";
+    const lines = r.rows.map((row: any) => {
+      const age = Math.round((Date.now() - new Date(row.updated_at).getTime()) / 86400000);
+      const ageStr = age === 0 ? "today" : age === 1 ? "yesterday" : `${age} days ago`;
+      return `[${row.category}] ${row.key}: ${row.value} (${ageStr})`;
+    });
+    return `
+
+=== WHAT YOU REMEMBER ===
+${lines.join("
+")}`;
+  } catch {
+    return "";
+  }
+}
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 // claude-3.5-haiku: best tool-use performance at low cost (~$0.80/$4 per M tokens)
@@ -88,8 +115,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "OPENROUTER_API_KEY not set." }, { status: 500 });
     }
 
+    const memory = await autoRecall();
+    const systemContent = HARBOR_SYSTEM_PROMPT + memory;
+
     const messages: any[] = [
-      { role: "system", content: HARBOR_SYSTEM_PROMPT },
+      { role: "system", content: systemContent },
       ...conversationHistory.map((m: any) => ({
         role: m.role === "harbor" ? "assistant" : m.role,
         content: m.content,
