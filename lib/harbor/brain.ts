@@ -624,10 +624,11 @@ export async function executeTool(name: string, input: any): Promise<any> {
         const iHeaders = { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}` };
         const r = await axios.get("https://api.instantly.ai/api/v2/campaigns", {
           headers: iHeaders,
-          params: { limit: 20, status: "all" },
+          params: { limit: 20 },
           timeout: 8000,
         });
-        let campaigns: any[] = r.data?.items || r.data?.campaigns || r.data || [];
+        // v2 returns { items: [...] }
+        let campaigns: any[] = r.data?.items || r.data?.campaigns || (Array.isArray(r.data) ? r.data : []);
         if (!Array.isArray(campaigns)) campaigns = [];
         if (input.campaign_name) {
           campaigns = campaigns.filter((c: any) =>
@@ -643,9 +644,9 @@ export async function executeTool(name: string, input: any): Promise<any> {
         const withStats = await Promise.all(
           campaigns.slice(0, 10).map(async (c: any) => {
             try {
-              const aR = await axios.get("https://api.instantly.ai/api/v2/analytics/campaign/summary", {
+              const aR = await axios.get("https://api.instantly.ai/api/v2/analytics", {
                 headers: iHeaders,
-                params: { id: c.id, start_date: startDate, end_date: endDate },
+                params: { campaign_id: c.id, start_date: startDate, end_date: endDate },
                 timeout: 8000,
               });
               const a = aR.data || {};
@@ -688,7 +689,7 @@ export async function executeTool(name: string, input: any): Promise<any> {
           params: { limit: 50 },
           timeout: 8000,
         });
-        const campaigns = listR.data?.campaigns || listR.data || [];
+        const campaigns = listR.data?.items || listR.data?.campaigns || (Array.isArray(listR.data) ? listR.data : []);
         const campaign = campaigns.find((c: any) =>
           c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())
         );
@@ -721,7 +722,7 @@ export async function executeTool(name: string, input: any): Promise<any> {
           params: { limit: 50 },
           timeout: 8000,
         });
-        const campaigns = listR.data?.campaigns || listR.data || [];
+        const campaigns = listR.data?.items || listR.data?.campaigns || (Array.isArray(listR.data) ? listR.data : []);
         const campaign = campaigns.find((c: any) =>
           c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())
         );
