@@ -383,6 +383,16 @@ export const HARBOR_TOOLS = [
     },
   },
   {
+    name: "list_slack_channels",
+    description: "List all Slack channels in the workspace with their IDs. Use this when SLACK_HAND_RAISES_CHANNEL is wrong or missing — find the correct channel ID and tell Joshua the exact value to set.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        search: { type: "string", description: "Optional: filter by name (e.g. 'hand-raises', 'alerts')" },
+      },
+    },
+  },
+  {
     name: "send_slack_message",
     description: "Send a message to a Slack channel. Use for alerts, summaries, or notifying the team.",
     input_schema: {
@@ -1023,6 +1033,40 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
             text: m.text,
             ts: new Date(parseFloat(m.ts) * 1000).toLocaleString(),
           })),
+        };
+      } catch (err: any) {
+        return { ok: false, error: err.message };
+      }
+    }
+
+    case "list_slack_channels": {
+      const token = process.env.SLACK_BOT_TOKEN;
+      if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set in fluid-os Railway variables." };
+      try {
+        const r = await axios.get("https://slack.com/api/conversations.list", {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { limit: 200, types: "public_channel,private_channel" },
+          timeout: 8000,
+        });
+        if (!r.data?.ok) {
+          const errCode = r.data?.error;
+          let hint = "";
+          if (errCode === "missing_scope") hint = " — Add channels:read and groups:read scopes to the Harbor Slack app at api.slack.com/apps → OAuth & Permissions, then reinstall.";
+          return { ok: false, error: errCode + hint };
+        }
+        let channels = r.data.channels || [];
+        if (input.search) {
+          channels = channels.filter((c: any) => c.name?.toLowerCase().includes(input.search.toLowerCase()));
+        }
+        return {
+          ok: true,
+          channels: channels.slice(0, 50).map((c: any) => ({
+            name: `#${c.name}`,
+            id: c.id,
+            is_private: c.is_private,
+            members: c.num_members,
+          })),
+          hint: "Use the 'id' value (starts with C) for SLACK_HAND_RAISES_CHANNEL in Railway.",
         };
       } catch (err: any) {
         return { ok: false, error: err.message };
