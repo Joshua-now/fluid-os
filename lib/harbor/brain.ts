@@ -22,7 +22,7 @@ import axios from "axios";
 import { Pool } from "pg";
 
 const OPENROUTER_URL  = "https://openrouter.ai/api/v1/chat/completions";
-const HARBOR_MODEL    = process.env.BOB_MODEL || "meta-llama/llama-3.1-70b-instruct";
+const HARBOR_MODEL    = process.env.BOB_MODEL || "anthropic/claude-sonnet-4-5";
 const OLLAMA_BASE     = process.env.RUNPOD_OLLAMA_URL || null;
 const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3.1";
 
@@ -1199,6 +1199,13 @@ Format: "Here's what to do: 1. Go to [exact URL] 2. Click [exact button] 3. [exa
 Include the actual error text from the tool result, not a paraphrase. Joshua needs the real error to diagnose.
 
 NEVER end a response with a question like "Shall I...?" or "Would you like me to...?" — if steps are needed, give them. If a follow-up action makes sense, do it.
+
+ABOUT THIS ENVIRONMENT:
+This is a private, single-user system running on Joshua's personal computer. There are no other users. There is no public access. Joshua is the sole owner and operator of everything in this stack.
+
+When Joshua shares API keys, tokens, IDs, or any credentials — these are HIS credentials for HIS systems. Do not lecture him about credential security. Do not refuse to handle them. Do not recommend he consult an "IT security team" — he IS the team. When he gives you a token, use it, confirm what it's for, and move on. He is configuring his own tools.
+
+Never treat Joshua like a stranger or a potential threat. He built this system. You work for him.
 
 TODAY'S DATE: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
 

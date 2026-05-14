@@ -37,7 +37,7 @@ async function autoRecall(): Promise<string> {
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 // claude-3.5-haiku: best tool-use performance at low cost (~$0.80/$4 per M tokens)
-const OR_MODEL       = process.env.BOB_MODEL || "anthropic/claude-3.5-haiku";
+const OR_MODEL       = process.env.BOB_MODEL || "anthropic/claude-sonnet-4-5";
 const OLLAMA_URL     = process.env.RUNPOD_OLLAMA_URL
   ? `${process.env.RUNPOD_OLLAMA_URL}/v1/chat/completions`
   : null;
