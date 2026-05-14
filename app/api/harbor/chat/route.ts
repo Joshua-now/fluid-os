@@ -29,11 +29,7 @@ async function autoRecall(): Promise<string> {
       const ageStr = age === 0 ? "today" : age === 1 ? "yesterday" : `${age} days ago`;
       return `[${row.category}] ${row.key}: ${row.value} (${ageStr})`;
     });
-    return `
-
-=== WHAT YOU REMEMBER ===
-${lines.join("
-")}`;
+    return "\n\n=== WHAT YOU REMEMBER ===\n" + lines.join("\n");
   } catch {
     return "";
   }
