@@ -1025,7 +1025,6 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
       const SERVICES = [
         { name: "n8n", url: `${process.env.N8N_BASE_URL}/healthz` },
         { name: "Switchboard", url: `${process.env.SWITCHBOARD_URL}/health` },
-        { name: "contractor-os", url: `${process.env.V2_URL}/api/health` },
         { name: "FluidOS", url: `${process.env.SELF_URL}/api/harbor/status` },
       ].filter((s) => s.url);
 

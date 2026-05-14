@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const BOB_API = process.env.NEXT_PUBLIC_BOB_API_URL || "https://backend-production-b9fc.up.railway.app";
+const BOB_API = process.env.NEXT_PUBLIC_BOB_API_URL || "";
 
 /* ─────────────────────────────────────────
    Types
@@ -260,7 +260,7 @@ export default function BobChat() {
       const errMsg = err instanceof Error ? err.message : "Unknown error";
       setMessages(prev => [...prev, {
         id: uid(), role: "bob",
-        text: `⚠️ Couldn't reach Bob right now — ${errMsg}. Check that the contractor-os backend is running on Railway.`,
+        text: `⚠️ Couldn't reach Bob right now — ${errMsg}. Check that the FluidOS backend is running on Railway.`,
         ts: Date.now(),
       }]);
     } finally {
