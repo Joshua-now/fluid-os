@@ -1010,7 +1010,7 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
 
     case "check_slack": {
       const token = process.env.SLACK_BOT_TOKEN;
-      if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set in fluid-os Railway variables." };
+      if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set in fluid-os Railway variables. Add it now." };
       const channel = input.channel || process.env.SLACK_HAND_RAISES_CHANNEL || "hand-raises";
       try {
         const r = await axios.get("https://slack.com/api/conversations.history", {
@@ -1020,12 +1020,41 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
         });
         if (!r.data?.ok) {
           const errCode = r.data?.error;
-          let hint = "";
-          if (errCode === "missing_scope") hint = " — Bot token is missing the channels:history or groups:history OAuth scope. Go to api.slack.com/apps → your app → OAuth & Permissions → add channels:history scope → reinstall app.";
-          if (errCode === "channel_not_found") hint = ` — Channel "${channel}" not found. Check SLACK_HAND_RAISES_CHANNEL env var has the correct channel ID (starts with C).`;
-          if (errCode === "not_in_channel") hint = " — Bot is not a member of this channel. Invite it with /invite @YourBotName in the channel.";
-          if (errCode === "invalid_auth") hint = " — Token is invalid or revoked. Generate a new Bot User OAuth Token at api.slack.com/apps.";
-          return { ok: false, error: errCode + hint };
+          // On channel errors, auto-lookup available channels so we can give the exact fix
+          if (["channel_not_found", "not_in_channel"].includes(errCode)) {
+            try {
+              const listR = await axios.get("https://slack.com/api/conversations.list", {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { limit: 200, types: "public_channel,private_channel" },
+                timeout: 8000,
+              });
+              if (listR.data?.ok) {
+                const channels = listR.data.channels || [];
+                // find likely matches
+                const matches = channels.filter((c: any) =>
+                  ["hand-raises", "hand_raises", "alerts", "harbor", "leads", "general"].some(n =>
+                    c.name?.toLowerCase().includes(n)
+                  )
+                );
+                const allNames = channels.slice(0, 30).map((c: any) => `#${c.name} → ${c.id}`);
+                if (errCode === "not_in_channel") {
+                  const ch = channels.find((c: any) => c.id === channel || c.name === channel);
+                  return { ok: false, error: `Bot is not in channel "${channel}". Fix: go to that channel in Slack and type /invite @Harbor`, channel_id: ch?.id };
+                }
+                return {
+                  ok: false,
+                  error: `Channel "${channel}" not found. SLACK_HAND_RAISES_CHANNEL env var is wrong.`,
+                  fix: `Go to Railway → fluid-os → Variables → set SLACK_HAND_RAISES_CHANNEL to one of these IDs:`,
+                  likely_matches: matches.map((c: any) => `#${c.name} → ID: ${c.id}`),
+                  all_channels: allNames,
+                };
+              }
+            } catch { /* ignore lookup failure */ }
+            return { ok: false, error: `${errCode}: Channel "${channel}" not found. Check SLACK_HAND_RAISES_CHANNEL in Railway — value should be a channel ID starting with C, not a channel name.` };
+          }
+          if (errCode === "missing_scope") return { ok: false, error: "missing_scope: Bot token is missing channels:history / groups:history scope. Fix: api.slack.com/apps → Harbor app → OAuth & Permissions → add channels:history → reinstall app." };
+          if (errCode === "invalid_auth") return { ok: false, error: "invalid_auth: SLACK_BOT_TOKEN is invalid or revoked. Fix: api.slack.com/apps → Harbor app → OAuth & Permissions → copy Bot User OAuth Token (xoxb-...) → update Railway variable." };
+          return { ok: false, error: errCode };
         }
         return {
           ok: true,
