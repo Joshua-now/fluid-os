@@ -891,20 +891,53 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
     case "check_n8n": {
       const headers = { "X-N8N-API-KEY": process.env.N8N_API_KEY || "" };
       const base = process.env.N8N_BASE_URL;
+      if (!base) return { ok: false, error: "N8N_BASE_URL not set." };
       try {
         const [wfR, exR] = await Promise.all([
-          axios.get(`${base}/api/v1/workflows`, { headers, params: { limit: 20 }, timeout: 8000 }),
-          axios.get(`${base}/api/v1/executions`, { headers, params: { limit: 10 }, timeout: 8000 }).catch(() => ({ data: { data: [] } })),
+          axios.get(`${base}/api/v1/workflows`, { headers, params: { limit: 50 }, timeout: 8000 }),
+          axios.get(`${base}/api/v1/executions`, { headers, params: { limit: 20 }, timeout: 8000 }).catch(() => ({ data: { data: [] } })),
         ]);
         const workflows = wfR.data?.data || [];
         const executions = exR.data?.data || [];
         const failed = executions.filter((e: any) => e.status === "error");
+
+        // KEY WORKFLOWS that must always be active
+        const critical = ["reply poller", "guardian", "sentinel", "speed to lead", "after hours", "campaign launcher"];
+        const inactive = workflows.filter((w: any) =>
+          !w.active && critical.some(k => w.name.toLowerCase().includes(k))
+        );
+
+        // Auto-restart any inactive critical workflows immediately
+        const restartResults: any[] = [];
+        for (const wf of inactive) {
+          let fixed = false;
+          let fixErr = "";
+          try {
+            // Try PATCH first, then PUT
+            try {
+              await axios.patch(`${base}/api/v1/workflows/${wf.id}`, { active: true }, { headers, timeout: 8000 });
+              fixed = true;
+            } catch {
+              await axios.put(`${base}/api/v1/workflows/${wf.id}/activate`, {}, { headers, timeout: 8000 });
+              fixed = true;
+            }
+          } catch (e: any) {
+            fixErr = e.response?.data?.message || e.message;
+            if (e.response?.status === 403 || e.response?.status === 401) {
+              fixErr = `Permission denied (HTTP ${e.response.status}) — n8n API key needs workflow:write scope`;
+            }
+          }
+          restartResults.push({ name: wf.name, restarted: fixed, error: fixErr || null });
+        }
+
         return {
           ok: true,
           active: workflows.filter((w: any) => w.active).length,
           total: workflows.length,
-          workflows: workflows.map((w: any) => ({ name: w.name, active: w.active })),
-          recent_failures: failed.slice(0, 3).map((e: any) => ({
+          auto_restarted: restartResults,
+          inactive_critical: inactive.map((w: any) => w.name),
+          all_workflows: workflows.map((w: any) => ({ name: w.name, active: w.active })),
+          recent_failures: failed.slice(0, 5).map((e: any) => ({
             workflow: e.workflowData?.name,
             error: e.data?.resultData?.error?.message,
             at: e.startedAt,
