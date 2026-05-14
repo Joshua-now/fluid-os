@@ -726,9 +726,11 @@ export async function executeTool(name: string, input: any): Promise<any> {
     }
 
     case "toggle_campaign": {
+      const iKey = process.env.INSTANTLY_API_KEY;
+      if (!iKey) return { success: false, error: "INSTANTLY_API_KEY not set." };
       try {
         const listR = await axios.get("https://api.instantly.ai/api/v2/campaigns", {
-          headers: { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}` },
+          headers: { Authorization: `Bearer ${iKey}` },
           params: { limit: 50 },
           timeout: 8000,
         });
@@ -736,16 +738,19 @@ export async function executeTool(name: string, input: any): Promise<any> {
         const campaign = campaigns.find((c: any) =>
           c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())
         );
-        if (!campaign) return { success: false, error: `No campaign matching "${input.campaign_name}".` };
-        const newStatus = input.action === "pause" ? "paused" : "active";
-        await axios.patch(
-          `https://api.instantly.ai/api/v2/campaigns/${campaign.id}`,
-          { status: newStatus },
-          { headers: { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}`, "Content-Type": "application/json" }, timeout: 8000 }
-        );
-        return { success: true, message: `"${campaign.name}" is now ${newStatus}.` };
+        if (!campaign) return { success: false, error: `No campaign matching "${input.campaign_name}". Available: ${campaigns.map((c: any) => c.name).join(", ")}` };
+        // v2 uses dedicated activate/pause endpoints, not PATCH status
+        const endpoint = input.action === "pause"
+          ? `https://api.instantly.ai/api/v2/campaigns/${campaign.id}/pause`
+          : `https://api.instantly.ai/api/v2/campaigns/${campaign.id}/activate`;
+        await axios.post(endpoint, {}, {
+          headers: { Authorization: `Bearer ${iKey}`, "Content-Type": "application/json" },
+          timeout: 8000,
+        });
+        const action = input.action === "pause" ? "paused ⏸" : "activated ✅";
+        return { success: true, message: `"${campaign.name}" is now ${action}.` };
       } catch (err: any) {
-        return { success: false, error: err.message };
+        return { success: false, error: err.response?.data?.message || err.response?.data?.error || err.message };
       }
     }
 
@@ -934,11 +939,26 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
 
       async function setActive(id: string, active: boolean) {
         // Try newer PATCH pattern first, fall back to PUT activate/deactivate
+        let patchErr: any = null;
         try {
           await axios.patch(`${base}/api/v1/workflows/${id}`, { active }, { headers, timeout: 8000 });
-        } catch {
+          return; // success
+        } catch (e: any) {
+          patchErr = e;
+        }
+        // Fallback to PUT endpoints
+        try {
           const path = active ? "activate" : "deactivate";
           await axios.put(`${base}/api/v1/workflows/${id}/${path}`, {}, { headers, timeout: 8000 });
+        } catch (putErr: any) {
+          // Both methods failed — throw meaningful error
+          const patchMsg = patchErr?.response?.data?.message || patchErr?.message || "unknown";
+          const putMsg = putErr?.response?.data?.message || putErr?.message || "unknown";
+          const status = patchErr?.response?.status || putErr?.response?.status;
+          if (status === 403 || status === 401) {
+            throw new Error(`n8n API key does not have write permissions (HTTP ${status}). Go to ${base} → Settings → API → check your key has workflow:write scope.`);
+          }
+          throw new Error(`PATCH failed: ${patchMsg} | PUT fallback failed: ${putMsg}`);
         }
       }
 
