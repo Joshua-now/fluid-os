@@ -7,7 +7,7 @@ Fluid Productions runs a fully autonomous AI-driven marketing and sales operatio
 Cold email outreach targeting contractor segments. Mon–Fri 9AM–5/6PM ET schedule. 4 sending accounts, all 96–100% domain health. Replies polled every 15 minutes by the Reply Poller.
 
 **Reply Intelligence (AI-powered):**
-- Interested replies → routed to Troy or Product Specialist for live conversation
+- Interested replies → Harbor flags Joshua immediately via Slack and logs them in GHL pipeline
 - Objections → AI generates context-aware rebuttal for Joshua's review
 - Unsubscribes → auto-added to suppression list, removed from sequence
 - Out of office → held for follow-up

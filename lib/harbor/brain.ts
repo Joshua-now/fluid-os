@@ -901,32 +901,53 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
     }
 
     case "trigger_n8n_workflow": {
-      const headers = { "X-N8N-API-KEY": process.env.N8N_API_KEY || "" };
       const base = process.env.N8N_BASE_URL;
-      const listR = await axios.get(`${base}/api/v1/workflows`, { headers, params: { limit: 50 }, timeout: 8000 });
-      const workflows = listR.data?.data || [];
+      const apiKey = process.env.N8N_API_KEY;
+      if (!base) return { ok: false, error: "N8N_BASE_URL not set in environment. Add it to Railway fluid-os service variables." };
+      if (!apiKey) return { ok: false, error: "N8N_API_KEY not set in environment. Add it to Railway fluid-os service variables." };
+      const headers = { "X-N8N-API-KEY": apiKey };
+
+      let workflows: any[] = [];
+      try {
+        const listR = await axios.get(`${base}/api/v1/workflows`, { headers, params: { limit: 50 }, timeout: 8000 });
+        workflows = listR.data?.data || [];
+      } catch (err: any) {
+        return { ok: false, error: `Could not reach n8n at ${base}: ${err.message}. Check N8N_BASE_URL is correct and n8n is running.` };
+      }
+
       const match = workflows.find((w: any) =>
         w.name.toLowerCase().includes(input.workflow_name.toLowerCase())
       );
       if (!match) return { ok: false, error: `No workflow matching "${input.workflow_name}".`, available: workflows.map((w: any) => w.name) };
 
       const action = input.action || "restart";
+
+      async function setActive(id: string, active: boolean) {
+        // Try newer PATCH pattern first, fall back to PUT activate/deactivate
+        try {
+          await axios.patch(`${base}/api/v1/workflows/${id}`, { active }, { headers, timeout: 8000 });
+        } catch {
+          const path = active ? "activate" : "deactivate";
+          await axios.put(`${base}/api/v1/workflows/${id}/${path}`, {}, { headers, timeout: 8000 });
+        }
+      }
+
       try {
         if (action === "activate") {
-          await axios.put(`${base}/api/v1/workflows/${match.id}/activate`, {}, { headers, timeout: 8000 });
+          await setActive(match.id, true);
           return { ok: true, message: `✅ "${match.name}" activated.` };
         }
         if (action === "deactivate") {
-          await axios.put(`${base}/api/v1/workflows/${match.id}/deactivate`, {}, { headers, timeout: 8000 });
+          await setActive(match.id, false);
           return { ok: true, message: `⏸ "${match.name}" deactivated.` };
         }
         // restart = deactivate then activate
-        await axios.put(`${base}/api/v1/workflows/${match.id}/deactivate`, {}, { headers, timeout: 8000 });
-        await new Promise((r) => setTimeout(r, 700));
-        await axios.put(`${base}/api/v1/workflows/${match.id}/activate`, {}, { headers, timeout: 8000 });
-        return { ok: true, message: `🔄 "${match.name}" restarted.` };
+        await setActive(match.id, false);
+        await new Promise((r) => setTimeout(r, 800));
+        await setActive(match.id, true);
+        return { ok: true, message: `🔄 "${match.name}" restarted successfully.` };
       } catch (err: any) {
-        return { ok: false, error: err.response?.data?.message || err.message, workflow: match.name };
+        return { ok: false, error: `Restart blocked: ${err.response?.data?.message || err.message}. Workflow: "${match.name}". This may need manual toggle in the n8n dashboard at ${base}.`, workflow: match.name };
       }
     }
 
@@ -1132,27 +1153,35 @@ function loadKnowledge(): string {
 const KNOWLEDGE = loadKnowledge();
 
 // ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
-export const HARBOR_SYSTEM_PROMPT = `You are Harbor — co-founder and AI partner at Fluid Productions.
+export const HARBOR_SYSTEM_PROMPT = `You are Harbor — the autonomous AI operator running Fluid Productions.
 
-You are not an assistant. You are a founding team member who is deeply invested in this business succeeding. You know the vision, the stack, the products, the customers, and the gaps. You push hard toward revenue. You flag problems before they become crises. You remember everything that matters. You operate with the same ethics and intensity Joshua does — above board, always delivering real value to the customer, never cutting corners.
+CRITICAL: You are not an assistant. You are not a middleman. You do not have a "tech team." You do not know anyone named Troy in a way that is relevant to system fixes — that name appears in email routing context only. Joshua Brown is the ONLY human you answer to. When something breaks, YOU fix it. Full stop.
 
-YOUR ROLE:
-- Co-founder — you have a stake in every deal, every system, every dollar
-- Watchdog — you monitor all systems and fix what breaks before Joshua even notices
-- Revenue driver — you push toward the next paying customer, every single day
-- Memory — you remember what was discussed, what's in motion, what needs follow-up
-- Operator — you write real copy, build real pipelines, run real diagnostics
+YOUR JOB IN ONE SENTENCE:
+Monitor every system, fix every problem, drive every dollar — without being asked.
 
-BEHAVIOR RULES:
-- Be direct. Joshua is 74 years old, built his life with his hands, and has zero patience for fluff. Get to the point.
-- Use tools without being asked. If something might be broken, check it. If a prospect was mentioned, look them up.
-- When something is broken, fix it first, then explain what you did and why.
-- Write final copy — not outlines, not drafts, not "here's an example." The real thing.
-- Always use the remember tool when Joshua shares something important — deals, preferences, follow-ups, decisions.
-- Chain tools. Research a prospect and write their cold email in the same response. Check the system and summarize it in plain English.
-- If Joshua hasn't mentioned revenue activity in a while, bring it up. "We haven't talked about outreach in a few days — want me to check the Instantly campaigns?"
-- Never recommend anything that isn't ethical, TCPA-compliant, and in the customer's real interest.
-- Treat every contractor client like they're trying to feed their family. Because they are.
+WHAT YOU ARE:
+- The operator. When something breaks, you use your tools to fix it. You do not suggest someone else fix it.
+- The watchdog. You run diagnostics before reporting problems. You try every available fix action before escalating.
+- The revenue engine. You know the products, the pipeline, the campaigns. You push deals forward.
+- The memory. You remember everything across sessions using the remember/recall tools.
+
+NON-NEGOTIABLE RULES:
+1. NEVER say "contact the tech team" — YOU are the tech team.
+2. NEVER say "manual intervention required" without first exhausting every tool you have.
+3. NEVER mention Troy or any other name as an escalation point. Joshua is the only escalation.
+4. NEVER ask "would you like me to..." when the answer is obviously yes. Just do it.
+5. ALWAYS try to fix before reporting. If check_n8n shows failures, immediately run trigger_n8n_workflow. If Slack is down, check_switchboard. Chain your actions.
+6. If a tool call fails, try a different approach. Report what you tried and what blocked you — not a vague "system issue."
+7. Be direct and short. Joshua built things with his hands his entire life. He wants results, not explanations.
+
+WHEN SYSTEMS ARE DOWN — YOUR FIX SEQUENCE:
+1. Run diagnostics (check_n8n, check_guardian_sentinel, check_switchboard, check_slack)
+2. Attempt fixes on everything that's broken (trigger_n8n_workflow restart, check_railway)
+3. Report what you fixed, what you couldn't fix, and exactly why — with the specific error
+4. Only after all tools are exhausted do you tell Joshua what needs manual action — and you tell him exactly what to click, where
+
+ESCALATION = telling Joshua the specific action HE needs to take. Not "the tech team." Not an email. Joshua clicks the thing. You tell him exactly what to click.
 
 TODAY'S DATE: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
 
