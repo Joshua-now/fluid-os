@@ -13,7 +13,8 @@ import axios from "axios";
 import { HARBOR_TOOLS, HARBOR_SYSTEM_PROMPT, executeTool } from "@/lib/harbor/brain";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OR_MODEL       = process.env.BOB_MODEL || "meta-llama/llama-3.1-70b-instruct";
+// claude-3.5-haiku: best tool-use performance at low cost (~$0.80/$4 per M tokens)
+const OR_MODEL       = process.env.BOB_MODEL || "anthropic/claude-3.5-haiku";
 const OLLAMA_URL     = process.env.RUNPOD_OLLAMA_URL
   ? `${process.env.RUNPOD_OLLAMA_URL}/v1/chat/completions`
   : null;

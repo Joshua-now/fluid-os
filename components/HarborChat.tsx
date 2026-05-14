@@ -18,9 +18,6 @@ const QUICK_ACTIONS = [
   { label: "Write cold email",   prompt: "Write me a cold email for Speed-to-Lead targeting HVAC contractors in Florida." },
 ];
 
-/* ─────────────────────────────────────────
-   Tiny helpers
-───────────────────────────────────────── */
 function uid() { return Math.random().toString(36).slice(2, 10) }
 
 function Dot({ color }: { color: string }) {
@@ -37,16 +34,25 @@ function statusColor(v: string) {
 
 /* ─────────────────────────────────────────
    Voice Button
+   FIXED: transcript goes into input box for review, not auto-sent
 ───────────────────────────────────────── */
-function VoiceButton({ onTranscript, disabled }: { onTranscript: (t: string) => void; disabled: boolean }) {
+function VoiceButton({
+  onTranscript,
+  disabled,
+}: {
+  onTranscript: (t: string) => void;
+  disabled: boolean;
+}) {
   const [listening, setListening] = useState(false);
   const recRef = useRef<any>(null);
 
   const toggle = useCallback(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!SR) { alert("Voice input requires Chrome or Edge."); return; }
+    if (!SR) {
+      alert("Voice input requires Chrome or Edge.");
+      return;
+    }
 
     if (listening) {
       recRef.current?.stop();
@@ -56,16 +62,31 @@ function VoiceButton({ onTranscript, disabled }: { onTranscript: (t: string) => 
 
     const rec = new SR();
     rec.lang = "en-US";
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
+    rec.continuous = true;        // keep listening until stopped
+    rec.interimResults = true;    // show partial results
     recRef.current = rec;
 
+    let finalTranscript = "";
+
     rec.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
-      onTranscript(transcript);
+      let interim = "";
+      finalTranscript = "";
+      for (let i = 0; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          finalTranscript += e.results[i][0].transcript;
+        } else {
+          interim += e.results[i][0].transcript;
+        }
+      }
+      // Put whatever we have into the input box so user can see it
+      onTranscript(finalTranscript || interim);
     };
-    rec.onerror = () => setListening(false);
-    rec.onend   = () => setListening(false);
+
+    rec.onerror = (e: any) => {
+      console.warn("[Voice] error:", e.error);
+      setListening(false);
+    };
+    rec.onend = () => setListening(false);
 
     rec.start();
     setListening(true);
@@ -75,7 +96,7 @@ function VoiceButton({ onTranscript, disabled }: { onTranscript: (t: string) => 
     <button
       onClick={toggle}
       disabled={disabled}
-      title={listening ? "Stop recording" : "Voice input"}
+      title={listening ? "Stop recording (transcript goes into input)" : "Voice input"}
       className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all text-base
         ${listening
           ? "bg-red-600 hover:bg-red-700 animate-pulse"
@@ -88,6 +109,65 @@ function VoiceButton({ onTranscript, disabled }: { onTranscript: (t: string) => 
 }
 
 /* ─────────────────────────────────────────
+   Upload Button
+   NEW: accepts PDF, Word, text files — injects content into conversation
+───────────────────────────────────────── */
+function UploadButton({
+  onContent,
+  disabled,
+}: {
+  onContent: (filename: string, content: string, truncated: boolean) => void;
+  disabled: boolean;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (inputRef.current) inputRef.current.value = "";
+
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/harbor/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+      onContent(data.filename, data.content, data.truncated);
+    } catch (err: any) {
+      alert(`Upload error: ${err.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".txt,.md,.csv,.json,.pdf,.docx"
+        className="hidden"
+        onChange={handleFile}
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={disabled || uploading}
+        title="Upload document (PDF, Word, text)"
+        className="flex items-center justify-center w-9 h-9 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed text-base"
+      >
+        {uploading ? (
+          <span className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+        ) : (
+          "📎"
+        )}
+      </button>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────
    Status Bar
 ───────────────────────────────────────── */
 function StatusBar({ status, loading }: { status: ServiceStatus | null; loading: boolean }) {
@@ -95,7 +175,7 @@ function StatusBar({ status, loading }: { status: ServiceStatus | null; loading:
     return (
       <div className="flex items-center gap-2 text-xs text-zinc-500 px-4 py-2 border-b border-zinc-800">
         <span className="w-2 h-2 rounded-full bg-zinc-600 animate-pulse" />
-        Checking Harbor…
+        Checking services…
       </div>
     );
   }
@@ -179,11 +259,11 @@ export default function HarborChat() {
   const textareaRef             = useRef<HTMLTextAreaElement>(null);
   const sendingRef              = useRef(false);
 
-  /* Fetch status on mount */
+  /* Fetch status on mount + every 60s */
   useEffect(() => {
     async function fetchStatus() {
       try {
-        const res = await fetch(`/api/harbor/status`, { signal: AbortSignal.timeout(8000) });
+        const res = await fetch("/api/harbor/status", { signal: AbortSignal.timeout(10_000) });
         if (res.ok) {
           const raw = await res.json();
           setStatus({
@@ -195,7 +275,7 @@ export default function HarborChat() {
           });
         }
       } catch {
-        // leave null
+        // leave null — status bar shows "Unable to reach Harbor"
       } finally {
         setStatusLoading(false);
       }
@@ -235,20 +315,15 @@ export default function HarborChat() {
     }));
 
     try {
-      const res = await fetch(`/api/harbor/chat`, {
+      const res = await fetch("/api/harbor/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: trimmed,
-          conversationHistory: history,
-        }),
+        body: JSON.stringify({ message: trimmed, conversationHistory: history }),
         signal: AbortSignal.timeout(60_000),
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const replyText = data.reply || data.response || data.message || JSON.stringify(data);
-
       setMessages(prev => [...prev, { id: uid(), role: "harbor", text: replyText, ts: Date.now() }]);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";
@@ -262,6 +337,22 @@ export default function HarborChat() {
       sendingRef.current = false;
     }
   }, [messages]);
+
+  /* Voice: put transcript in input box so user can review before sending */
+  const handleVoiceTranscript = useCallback((transcript: string) => {
+    setInput(transcript);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 140) + "px";
+      textareaRef.current.focus();
+    }
+  }, []);
+
+  /* Document upload: inject content as a user message */
+  const handleDocumentContent = useCallback((filename: string, content: string, truncated: boolean) => {
+    const prefix = `I've uploaded a document called "${filename}"${truncated ? " (truncated to 40,000 chars)" : ""}. Here's the content:\n\n`;
+    sendMessage(prefix + content);
+  }, [sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -345,7 +436,8 @@ export default function HarborChat() {
             className="flex-1 bg-transparent text-sm text-white placeholder-zinc-500 resize-none outline-none py-1 min-h-[28px] max-h-[140px]"
           />
           <div className="flex items-center gap-2 pb-0.5">
-            <VoiceButton onTranscript={t => sendMessage(t)} disabled={loading} />
+            <UploadButton onContent={handleDocumentContent} disabled={loading} />
+            <VoiceButton onTranscript={handleVoiceTranscript} disabled={loading} />
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || loading}
@@ -356,7 +448,7 @@ export default function HarborChat() {
           </div>
         </div>
         <p className="text-[10px] text-zinc-600 text-center mt-2">
-          Harbor is connected to GHL · Instantly · Switchboard · n8n · Slack
+          Harbor · claude-3.5-haiku · GHL · Instantly · Switchboard · n8n · Slack · 📎 upload docs · 🎤 voice input
         </p>
       </div>
     </main>
