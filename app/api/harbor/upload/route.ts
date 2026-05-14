@@ -17,13 +17,13 @@ export async function POST(req: NextRequest) {
       content = buffer.toString("utf8");
 
     } else if (ext === "pdf") {
-      // Dynamic import so build doesn't fail if pdf-parse isn't installed
       try {
-        const pdfParse = (await import("pdf-parse")).default;
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
         const parsed = await pdfParse(buffer);
         content = parsed.text;
       } catch {
-        return NextResponse.json({ error: "pdf-parse not installed. Run: npm install pdf-parse" }, { status: 500 });
+        return NextResponse.json({ error: "Failed to parse PDF" }, { status: 500 });
       }
 
     } else if (ext === "docx") {
