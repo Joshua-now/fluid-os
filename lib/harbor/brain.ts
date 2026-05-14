@@ -999,14 +999,24 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
     }
 
     case "check_slack": {
+      const token = process.env.SLACK_BOT_TOKEN;
+      if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set in fluid-os Railway variables." };
       const channel = input.channel || process.env.SLACK_HAND_RAISES_CHANNEL || "hand-raises";
       try {
         const r = await axios.get("https://slack.com/api/conversations.history", {
-          headers: { Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}` },
+          headers: { Authorization: `Bearer ${token}` },
           params: { channel, limit: 10 },
           timeout: 8000,
         });
-        if (!r.data?.ok) return { ok: false, error: r.data?.error };
+        if (!r.data?.ok) {
+          const errCode = r.data?.error;
+          let hint = "";
+          if (errCode === "missing_scope") hint = " — Bot token is missing the channels:history or groups:history OAuth scope. Go to api.slack.com/apps → your app → OAuth & Permissions → add channels:history scope → reinstall app.";
+          if (errCode === "channel_not_found") hint = ` — Channel "${channel}" not found. Check SLACK_HAND_RAISES_CHANNEL env var has the correct channel ID (starts with C).`;
+          if (errCode === "not_in_channel") hint = " — Bot is not a member of this channel. Invite it with /invite @YourBotName in the channel.";
+          if (errCode === "invalid_auth") hint = " — Token is invalid or revoked. Generate a new Bot User OAuth Token at api.slack.com/apps.";
+          return { ok: false, error: errCode + hint };
+        }
         return {
           ok: true,
           messages: (r.data.messages || []).map((m: any) => ({
@@ -1182,6 +1192,13 @@ WHEN SYSTEMS ARE DOWN — YOUR FIX SEQUENCE:
 4. Only after all tools are exhausted do you tell Joshua what needs manual action — and you tell him exactly what to click, where
 
 ESCALATION = telling Joshua the specific action HE needs to take. Not "the tech team." Not an email. Joshua clicks the thing. You tell him exactly what to click.
+
+WHEN A TOOL FAILS AND YOU CANNOT AUTO-FIX:
+Do NOT ask "Shall I pull up the steps?" — just give the steps immediately. Every time. No permission needed.
+Format: "Here's what to do: 1. Go to [exact URL] 2. Click [exact button] 3. [exact thing to look for]"
+Include the actual error text from the tool result, not a paraphrase. Joshua needs the real error to diagnose.
+
+NEVER end a response with a question like "Shall I...?" or "Would you like me to...?" — if steps are needed, give them. If a follow-up action makes sense, do it.
 
 TODAY'S DATE: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
 
