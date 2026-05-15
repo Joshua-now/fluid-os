@@ -1,6 +1,6 @@
 // Central credential registry
 // Each entry describes one API key / token in the system.
-// `expiresAt` is ISO date string â null means no known expiry.
+// `expiresAt` is ISO date string — null means no known expiry.
 // `locations` tells the propagation API where to push updates.
 
 export type CredLocation =
@@ -14,7 +14,7 @@ export interface Credential {
   name: string;
   service: string;
   description: string;
-  expiresAt: string | null;   // ISO date or null
+  expiresAt: string | null;
   locations: CredLocation[];
 }
 
@@ -76,7 +76,7 @@ export const CREDENTIALS: Credential[] = [
     locations: [
       { type: "n8n_code", workflowId: "e1q4gxLtQyZJFHtd", nodeNames: ["Health Pings", "Initiate Morning Call"] },
       { type: "n8n_code", workflowId: "jyLvOG7Uu2c5KoHC", nodeNames: ["Handle Call Event"] },
-      { type: "manual", note: "Also in Switchboard V5 Railway env: TELNYX_API_KEY" },
+      { type: "railway", project: "exquisite-wisdom", service: "switchboard-v5", varName: "TELNYX_API_KEY" },
     ],
   },
   {
@@ -84,9 +84,9 @@ export const CREDENTIALS: Credential[] = [
     name: "n8n API Key",
     service: "n8n",
     description: "Used by FluidOS health checks and workflow patching",
-        expiresAt: null,
+    expiresAt: null,
     locations: [
-      { type: "manual", note: "Regenerate at n8n Settings â API. Update fluid-os env var N8N_API_KEY and all hardcoded workflow nodes." },
+      { type: "railway", project: "exquisite-wisdom", service: "web", varName: "N8N_API_KEY" },
     ],
   },
   {
@@ -116,13 +116,12 @@ export const CREDENTIALS: Credential[] = [
     description: "Creates contacts and updates pipeline in GHL",
     expiresAt: null,
     locations: [
-      { type: "railway", project: "fluid-os", service: "n8n-production-5955", varName: "GHL_PIT_TOKEN" },
-      { type: "manual", note: "Code nodes now read process.env.GHL_PIT_TOKEN. Also update the GHL credential on the HTTP Request node for Create GHL Opportunity in Reply Handler." },
+      { type: "railway", project: "exquisite-wisdom", service: "n8n-production-5955", varName: "GHL_PIT_TOKEN" },
+      { type: "manual", note: "Also update the GHL HTTP Request credential node for 'Create GHL Opportunity' in Reply Handler workflow." },
     ],
   },
 ];
 
-// Helper: days until expiry (negative = already expired)
 export function daysUntilExpiry(expiresAt: string | null): number | null {
   if (!expiresAt) return null;
   const diff = new Date(expiresAt).getTime() - Date.now();
