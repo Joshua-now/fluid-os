@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { isAuthenticated, unauthorizedResponse } from "@/lib/authGuard";
 
 const INSTANTLY_BASE = "https://api.instantly.ai/api/v2";
 
@@ -54,7 +55,9 @@ export interface InstantlySnapshot {
   error?: string;
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  if (!isAuthenticated(req)) return unauthorizedResponse();
+
   try {
     const [campaignsRaw, accountsRaw] = await Promise.all([
       instantly<{ items?: unknown[]; data?: unknown[] }>("/campaigns?limit=50"),

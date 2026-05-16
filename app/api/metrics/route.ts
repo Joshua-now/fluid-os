@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { isAuthenticated, unauthorizedResponse } from "@/lib/authGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,9 @@ async function ghlGet(path: string) {
   return res.json();
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!isAuthenticated(req)) return unauthorizedResponse();
+
   try {
     const [contactsRes, opportunitiesRes, pipelineStagesRes] = await Promise.allSettled([
       ghlGet(`/contacts/?locationId=${GHL_LOCATION}&limit=100&sortBy=dateAdded&sortOrder=desc`),

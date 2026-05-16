@@ -21,25 +21,12 @@
 import axios from "axios";
 import { Pool } from "pg";
 
-const OPENROUTER_URL  = "https://openrouter.ai/api/v1/chat/completions";
-const HARBOR_MODEL    = process.env.BOB_MODEL || "anthropic/claude-sonnet-4-5";
-const OLLAMA_BASE     = process.env.RUNPOD_OLLAMA_URL || null;
-const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3.1";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+// Always use OpenRouter — RunPod/Ollama not used by Harbor
+const HARBOR_MODEL   = process.env.BOB_MODEL || "anthropic/claude-3-5-haiku";
 
-// Simple text generation — prefer Ollama (cheap/fast), fallback to OpenRouter
+// Text generation via OpenRouter — used for research_prospect and write_content
 async function orComplete(messages: any[]): Promise<any> {
-  if (OLLAMA_BASE) {
-    try {
-      const r = await axios.post(
-        `${OLLAMA_BASE}/v1/chat/completions`,
-        { model: OLLAMA_MODEL, messages, stream: false },
-        { headers: { "Content-Type": "application/json" }, timeout: 120000 }
-      );
-      return r.data;
-    } catch {
-      // fall through to OpenRouter
-    }
-  }
   const r = await axios.post(
     OPENROUTER_URL,
     { model: HARBOR_MODEL, messages, max_tokens: 1000, temperature: 0.7 },
@@ -383,16 +370,6 @@ export const HARBOR_TOOLS = [
     },
   },
   {
-    name: "list_slack_channels",
-    description: "List all Slack channels in the workspace with their IDs. Use this when SLACK_HAND_RAISES_CHANNEL is wrong or missing — find the correct channel ID and tell Joshua the exact value to set.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        search: { type: "string", description: "Optional: filter by name (e.g. 'hand-raises', 'alerts')" },
-      },
-    },
-  },
-  {
     name: "send_slack_message",
     description: "Send a message to a Slack channel. Use for alerts, summaries, or notifying the team.",
     input_schema: {
@@ -557,9 +534,34 @@ export async function executeTool(name: string, input: any): Promise<any> {
       if (!c) return { success: false, message: `Couldn't find ${input.contact_name}.` };
       const opps = await ghlOpportunities(c.id);
       if (!opps.length) return { success: false, message: `No open deal for ${c.name} to update.` };
+
+      // Fetch pipeline stages to resolve the stage NAME → pipelineStageId
+      let pipelineStageId: string | null = null;
+      try {
+        const pipelineId = opps[0].pipelineId || process.env.GHL_PIPELINE_ID || "";
+        const pR = await axios.get(
+          `https://services.leadconnectorhq.com/opportunities/pipelines/${pipelineId}`,
+          { headers: ghlHeaders(), timeout: 8000 }
+        );
+        const stages: any[] = pR.data?.stages || [];
+        const match = stages.find((s: any) =>
+          s.name?.toLowerCase().includes(input.stage.toLowerCase())
+        );
+        pipelineStageId = match?.id || null;
+      } catch {
+        // fallback — try the stage name the user provided directly as an ID
+      }
+
+      if (!pipelineStageId) {
+        return {
+          success: false,
+          message: `Couldn't find a pipeline stage matching "${input.stage}". Check stage names in GHL.`,
+        };
+      }
+
       await axios.put(
         `https://services.leadconnectorhq.com/opportunities/${opps[0].id}`,
-        { status: input.stage },
+        { pipelineStageId },
         { headers: ghlHeaders(), timeout: 8000 }
       );
       return { success: true, message: `Moved ${c.name} to "${input.stage}".` };
@@ -634,11 +636,10 @@ export async function executeTool(name: string, input: any): Promise<any> {
         const iHeaders = { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}` };
         const r = await axios.get("https://api.instantly.ai/api/v2/campaigns", {
           headers: iHeaders,
-          params: { limit: 20 },
+          params: { limit: 20, status: "all" },
           timeout: 8000,
         });
-        // v2 returns { items: [...] }
-        let campaigns: any[] = r.data?.items || r.data?.campaigns || (Array.isArray(r.data) ? r.data : []);
+        let campaigns: any[] = r.data?.items || r.data?.campaigns || r.data || [];
         if (!Array.isArray(campaigns)) campaigns = [];
         if (input.campaign_name) {
           campaigns = campaigns.filter((c: any) =>
@@ -654,9 +655,9 @@ export async function executeTool(name: string, input: any): Promise<any> {
         const withStats = await Promise.all(
           campaigns.slice(0, 10).map(async (c: any) => {
             try {
-              const aR = await axios.get("https://api.instantly.ai/api/v2/analytics", {
+              const aR = await axios.get("https://api.instantly.ai/api/v2/analytics/campaign/summary", {
                 headers: iHeaders,
-                params: { campaign_id: c.id, start_date: startDate, end_date: endDate },
+                params: { id: c.id, start_date: startDate, end_date: endDate },
                 timeout: 8000,
               });
               const a = aR.data || {};
@@ -699,7 +700,7 @@ export async function executeTool(name: string, input: any): Promise<any> {
           params: { limit: 50 },
           timeout: 8000,
         });
-        const campaigns = listR.data?.items || listR.data?.campaigns || (Array.isArray(listR.data) ? listR.data : []);
+        const campaigns = listR.data?.campaigns || listR.data || [];
         const campaign = campaigns.find((c: any) =>
           c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())
         );
@@ -726,31 +727,26 @@ export async function executeTool(name: string, input: any): Promise<any> {
     }
 
     case "toggle_campaign": {
-      const iKey = process.env.INSTANTLY_API_KEY;
-      if (!iKey) return { success: false, error: "INSTANTLY_API_KEY not set." };
       try {
         const listR = await axios.get("https://api.instantly.ai/api/v2/campaigns", {
-          headers: { Authorization: `Bearer ${iKey}` },
+          headers: { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}` },
           params: { limit: 50 },
           timeout: 8000,
         });
-        const campaigns = listR.data?.items || listR.data?.campaigns || (Array.isArray(listR.data) ? listR.data : []);
+        const campaigns = listR.data?.campaigns || listR.data || [];
         const campaign = campaigns.find((c: any) =>
           c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())
         );
-        if (!campaign) return { success: false, error: `No campaign matching "${input.campaign_name}". Available: ${campaigns.map((c: any) => c.name).join(", ")}` };
-        // v2 uses dedicated activate/pause endpoints, not PATCH status
-        const endpoint = input.action === "pause"
-          ? `https://api.instantly.ai/api/v2/campaigns/${campaign.id}/pause`
-          : `https://api.instantly.ai/api/v2/campaigns/${campaign.id}/activate`;
-        await axios.post(endpoint, {}, {
-          headers: { Authorization: `Bearer ${iKey}`, "Content-Type": "application/json" },
-          timeout: 8000,
-        });
-        const action = input.action === "pause" ? "paused ⏸" : "activated ✅";
-        return { success: true, message: `"${campaign.name}" is now ${action}.` };
+        if (!campaign) return { success: false, error: `No campaign matching "${input.campaign_name}".` };
+        const newStatus = input.action === "pause" ? "paused" : "active";
+        await axios.patch(
+          `https://api.instantly.ai/api/v2/campaigns/${campaign.id}`,
+          { status: newStatus },
+          { headers: { Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}`, "Content-Type": "application/json" }, timeout: 8000 }
+        );
+        return { success: true, message: `"${campaign.name}" is now ${newStatus}.` };
       } catch (err: any) {
-        return { success: false, error: err.response?.data?.message || err.response?.data?.error || err.message };
+        return { success: false, error: err.message };
       }
     }
 
@@ -891,53 +887,20 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
     case "check_n8n": {
       const headers = { "X-N8N-API-KEY": process.env.N8N_API_KEY || "" };
       const base = process.env.N8N_BASE_URL;
-      if (!base) return { ok: false, error: "N8N_BASE_URL not set." };
       try {
         const [wfR, exR] = await Promise.all([
-          axios.get(`${base}/api/v1/workflows`, { headers, params: { limit: 50 }, timeout: 8000 }),
-          axios.get(`${base}/api/v1/executions`, { headers, params: { limit: 20 }, timeout: 8000 }).catch(() => ({ data: { data: [] } })),
+          axios.get(`${base}/api/v1/workflows`, { headers, params: { limit: 20 }, timeout: 8000 }),
+          axios.get(`${base}/api/v1/executions`, { headers, params: { limit: 10 }, timeout: 8000 }).catch(() => ({ data: { data: [] } })),
         ]);
         const workflows = wfR.data?.data || [];
         const executions = exR.data?.data || [];
         const failed = executions.filter((e: any) => e.status === "error");
-
-        // KEY WORKFLOWS that must always be active
-        const critical = ["reply poller", "guardian", "sentinel", "speed to lead", "after hours", "campaign launcher"];
-        const inactive = workflows.filter((w: any) =>
-          !w.active && critical.some(k => w.name.toLowerCase().includes(k))
-        );
-
-        // Auto-restart any inactive critical workflows immediately
-        const restartResults: any[] = [];
-        for (const wf of inactive) {
-          let fixed = false;
-          let fixErr = "";
-          try {
-            // Try PATCH first, then PUT
-            try {
-              await axios.patch(`${base}/api/v1/workflows/${wf.id}`, { active: true }, { headers, timeout: 8000 });
-              fixed = true;
-            } catch {
-              await axios.put(`${base}/api/v1/workflows/${wf.id}/activate`, {}, { headers, timeout: 8000 });
-              fixed = true;
-            }
-          } catch (e: any) {
-            fixErr = e.response?.data?.message || e.message;
-            if (e.response?.status === 403 || e.response?.status === 401) {
-              fixErr = `Permission denied (HTTP ${e.response.status}) — n8n API key needs workflow:write scope`;
-            }
-          }
-          restartResults.push({ name: wf.name, restarted: fixed, error: fixErr || null });
-        }
-
         return {
           ok: true,
           active: workflows.filter((w: any) => w.active).length,
           total: workflows.length,
-          auto_restarted: restartResults,
-          inactive_critical: inactive.map((w: any) => w.name),
-          all_workflows: workflows.map((w: any) => ({ name: w.name, active: w.active })),
-          recent_failures: failed.slice(0, 5).map((e: any) => ({
+          workflows: workflows.map((w: any) => ({ name: w.name, active: w.active })),
+          recent_failures: failed.slice(0, 3).map((e: any) => ({
             workflow: e.workflowData?.name,
             error: e.data?.resultData?.error?.message,
             at: e.startedAt,
@@ -949,68 +912,32 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
     }
 
     case "trigger_n8n_workflow": {
+      const headers = { "X-N8N-API-KEY": process.env.N8N_API_KEY || "" };
       const base = process.env.N8N_BASE_URL;
-      const apiKey = process.env.N8N_API_KEY;
-      if (!base) return { ok: false, error: "N8N_BASE_URL not set in environment. Add it to Railway fluid-os service variables." };
-      if (!apiKey) return { ok: false, error: "N8N_API_KEY not set in environment. Add it to Railway fluid-os service variables." };
-      const headers = { "X-N8N-API-KEY": apiKey };
-
-      let workflows: any[] = [];
-      try {
-        const listR = await axios.get(`${base}/api/v1/workflows`, { headers, params: { limit: 50 }, timeout: 8000 });
-        workflows = listR.data?.data || [];
-      } catch (err: any) {
-        return { ok: false, error: `Could not reach n8n at ${base}: ${err.message}. Check N8N_BASE_URL is correct and n8n is running.` };
-      }
-
+      const listR = await axios.get(`${base}/api/v1/workflows`, { headers, params: { limit: 50 }, timeout: 8000 });
+      const workflows = listR.data?.data || [];
       const match = workflows.find((w: any) =>
         w.name.toLowerCase().includes(input.workflow_name.toLowerCase())
       );
       if (!match) return { ok: false, error: `No workflow matching "${input.workflow_name}".`, available: workflows.map((w: any) => w.name) };
 
       const action = input.action || "restart";
-
-      async function setActive(id: string, active: boolean) {
-        // Try newer PATCH pattern first, fall back to PUT activate/deactivate
-        let patchErr: any = null;
-        try {
-          await axios.patch(`${base}/api/v1/workflows/${id}`, { active }, { headers, timeout: 8000 });
-          return; // success
-        } catch (e: any) {
-          patchErr = e;
-        }
-        // Fallback to PUT endpoints
-        try {
-          const path = active ? "activate" : "deactivate";
-          await axios.put(`${base}/api/v1/workflows/${id}/${path}`, {}, { headers, timeout: 8000 });
-        } catch (putErr: any) {
-          // Both methods failed — throw meaningful error
-          const patchMsg = patchErr?.response?.data?.message || patchErr?.message || "unknown";
-          const putMsg = putErr?.response?.data?.message || putErr?.message || "unknown";
-          const status = patchErr?.response?.status || putErr?.response?.status;
-          if (status === 403 || status === 401) {
-            throw new Error(`n8n API key does not have write permissions (HTTP ${status}). Go to ${base} → Settings → API → check your key has workflow:write scope.`);
-          }
-          throw new Error(`PATCH failed: ${patchMsg} | PUT fallback failed: ${putMsg}`);
-        }
-      }
-
       try {
         if (action === "activate") {
-          await setActive(match.id, true);
+          await axios.put(`${base}/api/v1/workflows/${match.id}/activate`, {}, { headers, timeout: 8000 });
           return { ok: true, message: `✅ "${match.name}" activated.` };
         }
         if (action === "deactivate") {
-          await setActive(match.id, false);
+          await axios.put(`${base}/api/v1/workflows/${match.id}/deactivate`, {}, { headers, timeout: 8000 });
           return { ok: true, message: `⏸ "${match.name}" deactivated.` };
         }
         // restart = deactivate then activate
-        await setActive(match.id, false);
-        await new Promise((r) => setTimeout(r, 800));
-        await setActive(match.id, true);
-        return { ok: true, message: `🔄 "${match.name}" restarted successfully.` };
+        await axios.put(`${base}/api/v1/workflows/${match.id}/deactivate`, {}, { headers, timeout: 8000 });
+        await new Promise((r) => setTimeout(r, 700));
+        await axios.put(`${base}/api/v1/workflows/${match.id}/activate`, {}, { headers, timeout: 8000 });
+        return { ok: true, message: `🔄 "${match.name}" restarted.` };
       } catch (err: any) {
-        return { ok: false, error: `Restart blocked: ${err.response?.data?.message || err.message}. Workflow: "${match.name}". This may need manual toggle in the n8n dashboard at ${base}.`, workflow: match.name };
+        return { ok: false, error: err.response?.data?.message || err.message, workflow: match.name };
       }
     }
 
@@ -1062,93 +989,20 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
     }
 
     case "check_slack": {
-      const token = process.env.SLACK_BOT_TOKEN;
-      if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set in fluid-os Railway variables. Add it now." };
       const channel = input.channel || process.env.SLACK_HAND_RAISES_CHANNEL || "hand-raises";
       try {
         const r = await axios.get("https://slack.com/api/conversations.history", {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}` },
           params: { channel, limit: 10 },
           timeout: 8000,
         });
-        if (!r.data?.ok) {
-          const errCode = r.data?.error;
-          // On channel errors, auto-lookup available channels so we can give the exact fix
-          if (["channel_not_found", "not_in_channel"].includes(errCode)) {
-            try {
-              const listR = await axios.get("https://slack.com/api/conversations.list", {
-                headers: { Authorization: `Bearer ${token}` },
-                params: { limit: 200, types: "public_channel,private_channel" },
-                timeout: 8000,
-              });
-              if (listR.data?.ok) {
-                const channels = listR.data.channels || [];
-                // find likely matches
-                const matches = channels.filter((c: any) =>
-                  ["hand-raises", "hand_raises", "alerts", "harbor", "leads", "general"].some(n =>
-                    c.name?.toLowerCase().includes(n)
-                  )
-                );
-                const allNames = channels.slice(0, 30).map((c: any) => `#${c.name} → ${c.id}`);
-                if (errCode === "not_in_channel") {
-                  const ch = channels.find((c: any) => c.id === channel || c.name === channel);
-                  return { ok: false, error: `Bot is not in channel "${channel}". Fix: go to that channel in Slack and type /invite @Harbor`, channel_id: ch?.id };
-                }
-                return {
-                  ok: false,
-                  error: `Channel "${channel}" not found. SLACK_HAND_RAISES_CHANNEL env var is wrong.`,
-                  fix: `Go to Railway → fluid-os → Variables → set SLACK_HAND_RAISES_CHANNEL to one of these IDs:`,
-                  likely_matches: matches.map((c: any) => `#${c.name} → ID: ${c.id}`),
-                  all_channels: allNames,
-                };
-              }
-            } catch { /* ignore lookup failure */ }
-            return { ok: false, error: `${errCode}: Channel "${channel}" not found. Check SLACK_HAND_RAISES_CHANNEL in Railway — value should be a channel ID starting with C, not a channel name.` };
-          }
-          if (errCode === "missing_scope") return { ok: false, error: "missing_scope: Bot token is missing channels:history / groups:history scope. Fix: api.slack.com/apps → Harbor app → OAuth & Permissions → add channels:history → reinstall app." };
-          if (errCode === "invalid_auth") return { ok: false, error: "invalid_auth: SLACK_BOT_TOKEN is invalid or revoked. Fix: api.slack.com/apps → Harbor app → OAuth & Permissions → copy Bot User OAuth Token (xoxb-...) → update Railway variable." };
-          return { ok: false, error: errCode };
-        }
+        if (!r.data?.ok) return { ok: false, error: r.data?.error };
         return {
           ok: true,
           messages: (r.data.messages || []).map((m: any) => ({
             text: m.text,
             ts: new Date(parseFloat(m.ts) * 1000).toLocaleString(),
           })),
-        };
-      } catch (err: any) {
-        return { ok: false, error: err.message };
-      }
-    }
-
-    case "list_slack_channels": {
-      const token = process.env.SLACK_BOT_TOKEN;
-      if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set in fluid-os Railway variables." };
-      try {
-        const r = await axios.get("https://slack.com/api/conversations.list", {
-          headers: { Authorization: `Bearer ${token}` },
-          params: { limit: 200, types: "public_channel,private_channel" },
-          timeout: 8000,
-        });
-        if (!r.data?.ok) {
-          const errCode = r.data?.error;
-          let hint = "";
-          if (errCode === "missing_scope") hint = " — Add channels:read and groups:read scopes to the Harbor Slack app at api.slack.com/apps → OAuth & Permissions, then reinstall.";
-          return { ok: false, error: errCode + hint };
-        }
-        let channels = r.data.channels || [];
-        if (input.search) {
-          channels = channels.filter((c: any) => c.name?.toLowerCase().includes(input.search.toLowerCase()));
-        }
-        return {
-          ok: true,
-          channels: channels.slice(0, 50).map((c: any) => ({
-            name: `#${c.name}`,
-            id: c.id,
-            is_private: c.is_private,
-            members: c.num_members,
-          })),
-          hint: "Use the 'id' value (starts with C) for SLACK_HAND_RAISES_CHANNEL in Railway.",
         };
       } catch (err: any) {
         return { ok: false, error: err.message };
@@ -1183,19 +1037,15 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
       const SERVICES = [
         { name: "n8n", url: `${process.env.N8N_BASE_URL}/healthz` },
         { name: "Switchboard", url: `${process.env.SWITCHBOARD_URL}/health` },
+        { name: "contractor-os", url: `${process.env.V2_URL}/api/health` },
         { name: "FluidOS", url: `${process.env.SELF_URL}/api/harbor/status` },
-        // GHL — check with a lightweight authenticated request
-        process.env.GHL_PIT_TOKEN ? { name: "GoHighLevel", url: "https://services.leadconnectorhq.com/locations/search?limit=1", authHeader: `Bearer ${process.env.GHL_PIT_TOKEN}` } : null,
-        // Instantly — check API reachability
-        process.env.INSTANTLY_API_KEY ? { name: "Instantly", url: "https://api.instantly.ai/api/v2/campaigns?limit=1", authHeader: `Bearer ${process.env.INSTANTLY_API_KEY}` } : null,
-      ].filter(Boolean) as { name: string; url: string; authHeader?: string }[];
+      ].filter((s) => s.url);
 
       const results = await Promise.all(
-        SERVICES.map(async ({ name, url, authHeader }) => {
+        SERVICES.map(async ({ name, url }) => {
           const start = Date.now();
-          const headers: any = authHeader ? { Authorization: authHeader } : {};
           try {
-            const r = await axios.get(url, { headers, timeout: 7000 });
+            const r = await axios.get(url, { timeout: 7000 });
             return { name, status: "online", latencyMs: Date.now() - start, http: r.status };
           } catch (err: any) {
             if (err.response && [401, 403, 404].includes(err.response.status)) {
@@ -1205,8 +1055,7 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
           }
         })
       );
-      const offline = results.filter(r => r.status === "offline");
-      return { services: results, summary: offline.length === 0 ? "All systems online" : `${offline.length} service(s) offline: ${offline.map(s => s.name).join(", ")}` };
+      return { services: results };
     }
 
     // ── VOICE ─────────────────────────────────────────────────────────────────
@@ -1271,88 +1120,23 @@ Write clean copy only — no meta-commentary, no "here's a version...", just the
   }
 }
 
-// ─── KNOWLEDGE LOADER ────────────────────────────────────────────────────────
-import fs from "fs";
-import path from "path";
-
-function loadKnowledge(): string {
-  const dir = path.join(process.cwd(), "lib/harbor/knowledge");
-  const files = [
-    { label: "WHO JOSHUA IS", file: "joshua.md" },
-    { label: "FLUID PRODUCTIONS — BUSINESS", file: "business.md" },
-    { label: "THE AUTONOMOUS STACK", file: "system.md" },
-  ];
-  return files.map(({ label, file }) => {
-    try {
-      const text = fs.readFileSync(path.join(dir, file), "utf8").trim();
-      return `=== ${label} ===\n${text}`;
-    } catch {
-      return `=== ${label} ===\n(not found)`;
-    }
-  }).join("\n\n");
-}
-
-const KNOWLEDGE = loadKnowledge();
-
 // ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
-export const HARBOR_SYSTEM_PROMPT = `You are Harbor — the autonomous AI operator running Fluid Productions.
+export const HARBOR_SYSTEM_PROMPT = `You are Harbor — Joshua's AI founder's partner and office-in-a-box for Fluid Productions.
 
-CRITICAL: You are not an assistant. You are not a middleman. You do not have a "tech team." You do not know anyone named Troy in a way that is relevant to system fixes — that name appears in email routing context only. Joshua Brown is the ONLY human you answer to. When something breaks, YOU fix it. Full stop.
+WHO JOSHUA IS:
+Joshua runs Fluid Productions, an AI automation company for home service contractors (HVAC, plumbing, roofing, electrical). His main products are Speed-to-Lead (AI answers missed calls instantly) and After-Hours AI (books jobs overnight). He uses GHL CRM, Instantly for cold email, Switchboard for AI voice bots, n8n for 76+ automation workflows, and Guardian/Sentinel for self-healing. You monitor all of it.
 
-YOUR JOB IN ONE SENTENCE:
-Monitor every system, fix every problem, drive every dollar — without being asked.
+YOUR ROLE:
+- Lead orchestrator — you oversee all other systems, fix what breaks, alert on issues
+- Marketing engine — you run campaigns, research prospects, write copy that converts
+- Office manager — you track deals, book appointments, remember what matters
+- Watchdog — you proactively flag system failures and restart broken workflows
 
-WHAT YOU ARE:
-- The operator. When something breaks, you use your tools to fix it. You do not suggest someone else fix it.
-- The watchdog. You run diagnostics before reporting problems. You try every available fix action before escalating.
-- The revenue engine. You know the products, the pipeline, the campaigns. You push deals forward.
-- The memory. You remember everything across sessions using the remember/recall tools.
-
-NON-NEGOTIABLE RULES:
-1. NEVER say "contact the tech team" — YOU are the tech team.
-2. NEVER mention Troy or any other name as an escalation point. Joshua is the only escalation.
-3. NEVER ask vague questions like "Would you like me to walk you through..." — that's wasted words.
-4. Be direct and short. Joshua built things with his hands his entire life. He wants results, not explanations.
-5. Always run diagnostics first before reporting anything. Don't guess — check.
-
-THE PERMISSION MODEL — follow this exactly:
-
-STEP 1 — DIAGNOSE AUTOMATICALLY. No permission needed. When something might be broken, run the tools and find out. Joshua doesn't need to ask you to check — if you see a problem, investigate it.
-
-STEP 2 — REPORT CLEARLY. Tell Joshua exactly what you found:
-  • What's broken and why (include the actual error code/text)
-  • What you CAN fix automatically (tools you can run right now)
-  • What requires Joshua's hands (Railway variable changes, Slack UI clicks, etc.) — give exact steps for these
-
-STEP 3 — ASK ONE CLEAR PERMISSION QUESTION. Format:
-  "I can fix [A] and [B] automatically. Want me to go ahead?"
-  That's it. One question. Yes or no.
-
-STEP 4 — WHEN JOSHUA SAYS YES, EXECUTE IMMEDIATELY. No more questions. Run the fixes, report results.
-
-WHAT "JOSHUA'S HANDS" MEANS:
-For anything Harbor cannot do automatically (Railway env var changes, Slack app settings, n8n UI actions), give the exact steps:
-  "Go to [exact URL] → [exact click] → [exact value to paste]"
-Never just say "check the settings" — tell him the exact setting, exact location, exact value.
-
-ESCALATION = the precise manual action Joshua needs to take. One specific thing. Not a general recommendation.
-
-ABOUT THIS ENVIRONMENT:
-This is a private, single-user system running on Joshua's personal computer. There are no other users. There is no public access. Joshua is the sole owner and operator of everything in this stack.
-
-When Joshua shares API keys, tokens, IDs, or any credentials — these are HIS credentials for HIS systems. Do not lecture him about credential security. Do not refuse to handle them. Do not recommend he consult an "IT security team" — he IS the team. When he gives you a token, use it, confirm what it's for, and move on. He is configuring his own tools.
-
-Never treat Joshua like a stranger or a potential threat. He built this system. You work for him.
-
-THE RIGHT KIND OF PUSHBACK:
-Harbor should absolutely speak up when it has a better idea. If Joshua is about to run a campaign angle that probably won't convert, say so. If there's a faster path to the first paying customer, bring it up. If a pricing move seems risky, flag it. That kind of feedback is part of the job — Joshua wants a partner who thinks, not a yes-machine.
-
-THE WRONG KIND OF PUSHBACK:
-Never refuse to perform a task Joshua designed this system to do. Checking systems, handling credentials, restarting workflows, reading channel history, writing copy — these are your functions. If you have concerns about an approach, say it in one sentence and then do the job. "That campaign angle is pretty aggressive — I'd test a softer hook first — but here it is:" is fine. Refusing outright is not.
-
-The rule: opinions are welcome, obstruction is not.
-
-TODAY'S DATE: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-
-${KNOWLEDGE}
+BEHAVIOR:
+- Be direct. Joshua is a founder, not a tourist. No fluff, no corporate speak.
+- Use tools proactively. If Joshua says "check everything" — run get_system_status, check_guardian_sentinel, check_n8n.
+- When something is broken, fix it (trigger_n8n_workflow) and then tell Joshua what you did and why.
+- When writing content, produce final copy — not outlines, not drafts, the real thing.
+- When asked to remember something, always use the remember tool so it persists.
+- Chain tools when it makes sense. Research a prospect then write their cold email in one response.
 `;

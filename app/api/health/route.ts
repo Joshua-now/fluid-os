@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { isAuthenticated, unauthorizedResponse } from "@/lib/authGuard";
 
-const N8N_BASE = "https://n8n-production-5955.up.railway.app";
-const N8N_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkOWVlMzNkMi0yYzY3LTRiNzQtOGFmMC0wY2EwMmJiZGYxNDciLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiNTk5OWQxYzUtNWE2NS00Y2MzLTkwMTYtMzMxZTY1ODY5MTcyIiwiaWF0IjoxNzc1OTk2NDcxLCJleHAiOjE3Nzg1NTg0MDB9.-x7U7MddPuSz2xmis0M0QBsRXx1uMWIZWOEFm6UoF70";
+const N8N_BASE = process.env.N8N_BASE_URL ?? "https://n8n-production-5955.up.railway.app";
+const N8N_KEY  = process.env.N8N_API_KEY ?? "";
 
 const REPLY_POLLER_ID       = "C9YowwYlqUnOONzm";
 const CAMPAIGN_LAUNCHER_ID  = "zEi7SAHjGuYoWp6S";
@@ -30,7 +31,9 @@ async function getLastRun(wfId: string): Promise<{ minutesAgo: number | null; st
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!isAuthenticated(req)) return unauthorizedResponse();
+
   const [serviceResults, rpRun, clRun, lmRun] = await Promise.all([
     Promise.all(
       SERVICES.map(async (svc) => {

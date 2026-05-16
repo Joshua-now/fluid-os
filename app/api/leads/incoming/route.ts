@@ -9,10 +9,9 @@ const WEBHOOK_SECRET   = process.env.LEADS_WEBHOOK_SECRET;
 const N8N_WEBHOOK_URL  = process.env.N8N_REPLY_WEBHOOK_URL;
 
 export async function POST(req: NextRequest) {
-  // Validate secret
+  // Validate secret — header only (query string exposes secret in server logs)
   if (WEBHOOK_SECRET) {
-    const provided = req.nextUrl.searchParams.get('secret')
-                  ?? req.headers.get('x-webhook-secret');
+    const provided = req.headers.get('x-webhook-secret');
     if (provided !== WEBHOOK_SECRET) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

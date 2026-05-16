@@ -6,43 +6,24 @@
  *
  * POST { message: string, conversationHistory?: {role, content}[] }
  * → { reply: string }
+ *
+ * Env vars:
+ *   OPENROUTER_API_KEY  — required
+ *   BOB_MODEL           — OpenRouter model slug (default: anthropic/claude-3-5-haiku)
+ *   SELF_URL            — HTTP-Referer header for OpenRouter
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
 import { HARBOR_TOOLS, HARBOR_SYSTEM_PROMPT, executeTool } from "@/lib/harbor/brain";
-import { Pool } from "pg";
-
-const memPool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-async function autoRecall(): Promise<string> {
-  try {
-    const r = await memPool.query(
-      `SELECT key, value, category, updated_at
-       FROM harbor_memory
-       ORDER BY updated_at DESC
-       LIMIT 20`
-    );
-    if (!r.rows.length) return "";
-    const lines = r.rows.map((row: any) => {
-      const age = Math.round((Date.now() - new Date(row.updated_at).getTime()) / 86400000);
-      const ageStr = age === 0 ? "today" : age === 1 ? "yesterday" : `${age} days ago`;
-      return `[${row.category}] ${row.key}: ${row.value} (${ageStr})`;
-    });
-    return "\n\n=== WHAT YOU REMEMBER ===\n" + lines.join("\n");
-  } catch {
-    return "";
-  }
-}
+import { isAuthenticated, unauthorizedResponse } from "@/lib/authGuard";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-// claude-3.5-haiku: best tool-use performance at low cost (~$0.80/$4 per M tokens)
-const OR_MODEL       = process.env.BOB_MODEL || "anthropic/claude-sonnet-4-5";
-const OLLAMA_URL     = process.env.RUNPOD_OLLAMA_URL
-  ? `${process.env.RUNPOD_OLLAMA_URL}/v1/chat/completions`
-  : null;
-const OLLAMA_MODEL   = process.env.OLLAMA_MODEL || "llama3.1";
-const MODEL_OVERRIDE = process.env.BOB_MODEL_OVERRIDE || null;
+// Default: Claude Haiku — reliable tool calling, won't hallucinate stats
+const OR_MODEL = process.env.BOB_MODEL || "anthropic/claude-3-5-haiku";
+
+// Per-tool execution timeout — prevents a single stuck tool from hanging the whole request
+const TOOL_TIMEOUT_MS = 15_000;
 
 // Convert tool defs → OpenAI function format
 const OPENAI_TOOLS = HARBOR_TOOLS.map((t: any) => ({
@@ -54,17 +35,12 @@ const OPENAI_TOOLS = HARBOR_TOOLS.map((t: any) => ({
   },
 }));
 
-function selectBackend(needsTools: boolean): "openrouter" | "ollama" {
-  if (MODEL_OVERRIDE === "openrouter") return "openrouter";
-  if (MODEL_OVERRIDE === "ollama") return "ollama";
-  if (needsTools) return "openrouter";
-  if (OLLAMA_URL) return "ollama";
-  return "openrouter";
-}
-
 async function callOpenRouter(messages: any[], withTools: boolean): Promise<any> {
   const body: any = { model: OR_MODEL, messages, max_tokens: 1500 };
-  if (withTools) { body.tools = OPENAI_TOOLS; body.tool_choice = "auto"; }
+  if (withTools) {
+    body.tools = OPENAI_TOOLS;
+    body.tool_choice = "auto";
+  }
   const r = await axios.post(OPENROUTER_URL, body, {
     headers: {
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -72,36 +48,22 @@ async function callOpenRouter(messages: any[], withTools: boolean): Promise<any>
       "HTTP-Referer": process.env.SELF_URL || "https://fluid-os.up.railway.app",
       "X-Title": "Harbor - Fluid OS",
     },
-    timeout: 60000,
+    timeout: 60_000,
   });
   return r.data;
 }
 
-async function callOllama(messages: any[]): Promise<any> {
-  if (!OLLAMA_URL) throw new Error("RUNPOD_OLLAMA_URL not set");
-  const r = await axios.post(OLLAMA_URL, { model: OLLAMA_MODEL, messages, stream: false }, {
-    headers: { "Content-Type": "application/json" },
-    timeout: 120000,
-  });
-  return r.data;
-}
-
-async function chat(messages: any[], needsTools: boolean): Promise<any> {
-  const backend = selectBackend(needsTools);
-  if (backend === "ollama") {
-    try {
-      console.log(`[Harbor] → Ollama (${OLLAMA_MODEL})`);
-      return await callOllama(messages);
-    } catch (err: any) {
-      console.warn("[Harbor] Ollama unreachable, falling back to OpenRouter:", err.message);
-      return await callOpenRouter(messages, false);
-    }
-  }
-  console.log(`[Harbor] → OpenRouter (${OR_MODEL})`);
-  return await callOpenRouter(messages, needsTools);
+/** Execute a single tool with a hard timeout */
+async function executeToolWithTimeout(name: string, args: any): Promise<any> {
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`Tool "${name}" timed out after ${TOOL_TIMEOUT_MS}ms`)), TOOL_TIMEOUT_MS)
+  );
+  return Promise.race([executeTool(name, args), timeoutPromise]);
 }
 
 export async function POST(req: NextRequest) {
+  if (!isAuthenticated(req)) return unauthorizedResponse();
+
   try {
     const { message, conversationHistory = [] } = await req.json();
     if (!message?.trim()) {
@@ -111,11 +73,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "OPENROUTER_API_KEY not set." }, { status: 500 });
     }
 
-    const memory = await autoRecall();
-    const systemContent = HARBOR_SYSTEM_PROMPT + memory;
-
     const messages: any[] = [
-      { role: "system", content: systemContent },
+      { role: "system", content: HARBOR_SYSTEM_PROMPT },
       ...conversationHistory.map((m: any) => ({
         role: m.role === "harbor" ? "assistant" : m.role,
         content: m.content,
@@ -123,10 +82,12 @@ export async function POST(req: NextRequest) {
       { role: "user", content: message },
     ];
 
+    // Agentic loop — max 8 iterations to prevent runaway tool chains
     let iterations = 0;
     while (iterations < 8) {
       iterations++;
-      const data = await chat(messages, true);
+
+      const data = await callOpenRouter(messages, true);
       const choice = data.choices?.[0];
       const msg = choice?.message;
       if (!msg) break;
@@ -134,19 +95,29 @@ export async function POST(req: NextRequest) {
       messages.push(msg);
       const finishReason = choice?.finish_reason;
 
+      // No tool calls → final reply
       if (finishReason !== "tool_calls" || !msg.tool_calls?.length) {
         return NextResponse.json({
           reply: msg.content || "Done.",
-          model: selectBackend(false) === "ollama" ? OLLAMA_MODEL : OR_MODEL,
+          model: OR_MODEL,
         });
       }
 
+      // Execute tool calls in parallel, each with a per-tool timeout
       const toolResults = await Promise.all(
         msg.tool_calls.map(async (tc: any) => {
           let args: any = {};
           try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
+
           console.log(`[Harbor] Tool: ${tc.function.name}`);
-          const result = await executeTool(tc.function.name, args);
+          let result: any;
+          try {
+            result = await executeToolWithTimeout(tc.function.name, args);
+          } catch (toolErr: any) {
+            console.error(`[Harbor] Tool error (${tc.function.name}):`, toolErr.message);
+            result = { error: toolErr.message };
+          }
+
           return {
             role: "tool",
             tool_call_id: tc.id,

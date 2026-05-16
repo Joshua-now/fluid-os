@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 
 export const dynamic = "force-dynamic";
 
-const VAULT_PASSWORD = process.env.VAULT_PASSWORD;
+const VAULT_PASSWORD = process.env.VAULT_PASSWORD ?? "";
 
 export async function POST(req: NextRequest) {
-  const { password } = await req.json();
+  const body = await req.json();
+  const provided = String(body?.password ?? "").trim();
 
-  if (password.trim() !== VAULT_PASSWORD) {
+  // Timing-safe comparison — prevents brute-force timing attacks
+  const expBuf  = Buffer.from(VAULT_PASSWORD);
+  const provBuf = Buffer.from(provided);
+  const matches = VAULT_PASSWORD.length > 0
+    && provBuf.length === expBuf.length
+    && timingSafeEqual(provBuf, expBuf);
+
+  if (!matches) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
